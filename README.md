@@ -225,6 +225,11 @@ For ICE/TURN setup in the running app, see [ICE / TURN Configuration](#ice--turn
 
 ## Changelog
 
+### v3.1.54 – Public Source Trust Copy (2026-07-02)
+
+- Updated landing page and canary policy text so verification points to the public GitHub repository.
+- Removed outdated language that implied only supporters could inspect source or reproduce builds.
+
 ### v3.1.53 – Production TURN Configuration (2026-07-02)
 
 **Connection reliability**

@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.53';
+const APP_VERSION = '3.1.54';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.54',
+    title: 'Public Source Trust Copy',
+    date: '2026-07-02',
+    changes: [
+      'Updated landing page and canary policy copy so verification points to the public GitHub repository.',
+      'Removed outdated language that implied only supporters could inspect source or reproduce builds.',
+    ],
+  },
   {
     version: '3.1.53',
     title: 'Production TURN Configuration',

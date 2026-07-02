@@ -84,7 +84,7 @@ const trustLinks = [
   {
     title: 'Reproducible builds',
     href: './trust/reproducible-builds.md',
-    body: 'How supporters with source access can rebuild the app and compare it against public release hashes.',
+    body: 'How to rebuild the app from the public GitHub repository and compare it against published release hashes.',
   },
 ];
 
@@ -223,9 +223,17 @@ export default function LandingPage() {
             </h2>
           </div>
           <p className="text-sm leading-7 text-gray-300">
-            ETHOS is not asking you to accept a privacy slogan. Public users can inspect the canary,
-            cryptographic design, and release receipts. Supporters with source access can go further:
-            inspect the implementation and reproduce release builds.
+            ETHOS is not asking you to accept a privacy slogan. Anyone can inspect the canary,
+            cryptographic design, and release receipts. The source is public on{' '}
+            <a
+              href="https://github.com/aitherapp/ethos-core"
+              className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              GitHub
+            </a>
+            , so you can also inspect the implementation and reproduce release builds.
           </p>
         </div>
 
@@ -329,6 +337,7 @@ export default function LandingPage() {
             <a href="#security" className="hover:text-brand">Security model</a>
             <a href="#verify" className="hover:text-brand">Verify ETHOS</a>
             <a href="./trust/canary.txt" className="hover:text-brand">Canary</a>
+            <a href="https://github.com/aitherapp/ethos-core" className="hover:text-brand" rel="noopener noreferrer" target="_blank">Source code</a>
           </div>
         </div>
       </footer>

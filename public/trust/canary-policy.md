@@ -50,5 +50,5 @@ compromised CI runner, browser compromise, or legal rules that differ by
 jurisdiction.
 
 The canary is one trust anchor. It should be checked together with the
-cryptographic design note, release receipts, public app behavior, and, for
-supporters with access, the source code used to build the app.
+cryptographic design note, release receipts, public app behavior, and the
+public source code on GitHub used to build the app.
