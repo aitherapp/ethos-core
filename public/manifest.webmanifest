@@ -1,0 +1,17 @@
+{
+  "name": "ETHOS",
+  "short_name": "ETHOS",
+  "description": "Browser-based encrypted messaging without accounts, phone numbers, or signups.",
+  "start_url": "./#app",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#00FF00",
+  "icons": [
+    {
+      "src": "./ethos-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

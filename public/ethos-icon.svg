@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ETHOS</title>
+  <desc id="desc">A green quantum-safe shield mark on a black field.</desc>
+  <rect width="512" height="512" rx="112" fill="#050806"/>
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="none" stroke="#00ff88" stroke-opacity="0.24" stroke-width="8"/>
+  <path d="M256 76 386 132v96c0 91-53 163-130 208-77-45-130-117-130-208v-96L256 76Z" fill="#0b1510" stroke="#00ff88" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M256 132 336 168v62c0 58-31 104-80 137-49-33-80-79-80-137v-62l80-36Z" fill="#00ff88" fill-opacity="0.09" stroke="#00ff88" stroke-opacity="0.58" stroke-width="8"/>
+  <path d="M196 190h126v30h-85v36h72v29h-72v41h89v30H196V190Z" fill="#e8fff4"/>
+  <circle cx="256" cy="256" r="184" fill="none" stroke="#00ff88" stroke-opacity="0.14" stroke-width="2" stroke-dasharray="12 18"/>
+  <circle cx="256" cy="256" r="214" fill="none" stroke="#00ff88" stroke-opacity="0.08" stroke-width="2"/>
+</svg>

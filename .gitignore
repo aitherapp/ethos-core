@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Cursor IDE local state (hooks, workspace cache — not shared across machines)
+.cursor/
+
+# Claude Code local settings (may contain API keys and machine-specific paths)
+.claude/

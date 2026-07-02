@@ -1,0 +1,53 @@
+ETHOS Warrant Canary
+
+Statement date: 2026-07-02
+Expected next update: 2026-07-09
+Update cadence: Weekly
+
+As of 2026-07-02, ETHOS has not been compelled by any government,
+court, agency, or other authority to:
+
+- Add or preserve a backdoor in ETHOS.
+- Disclose ETHOS users' encryption keys or private cryptographic material.
+- Weaken, bypass, or compromise ETHOS end-to-end encryption.
+- Deliver a targeted malicious build to a user or group of users.
+- Suppress truthful public information about a compromise of ETHOS privacy.
+
+This canary is a transparency signal, not a guarantee.
+
+How to verify this canary
+
+1. Open the public release receipt files in the same ETHOS deployment:
+   - /trust/SHA256SUMS
+   - /trust/release-manifest.json
+
+2. Find the line for trust/canary.txt in SHA256SUMS.
+
+3. Compute the SHA-256 hash of this file and compare it to that line.
+
+   On macOS or Linux:
+
+   shasum -a 256 trust/canary.txt
+
+   On Windows PowerShell:
+
+   Get-FileHash trust/canary.txt -Algorithm SHA256
+
+4. If the hash matches, this is the same canary text that shipped in the
+   public release receipt.
+
+5. Also check the statement date and expected next update date above. If this
+   canary is late, missing, or materially weaker than before, pause and ask
+   why before relying on new ETHOS releases.
+
+Related public trust artifacts:
+
+- /trust/cryptographic-design.md
+- /trust/reproducible-builds.md
+- /trust/release-manifest.json
+- /trust/SHA256SUMS
+
+The source code used to build ETHOS is published on GitHub at
+https://github.com/aitherapp/ethos-core. Anyone can inspect the
+implementation, verify GitHub artifact attestations linked from the release
+manifest, and reproduce release builds against the public hashes.

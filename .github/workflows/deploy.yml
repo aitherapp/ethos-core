@@ -1,0 +1,82 @@
+# Deploy to external public GitHub Pages repo
+name: Deploy to public Pages repo
+
+on:
+  push:
+    branches: ["main"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAGES_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build release
+        run: npm run build:release
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ethos-dist
+          path: ./dist
+          if-no-files-found: error
+
+      - name: Prepare attestation tree
+        run: cp -r dist "${{ runner.temp }}/ethos-attest"
+
+      - name: Attest release artifact provenance
+        id: attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: ${{ runner.temp }}/ethos-attest/trust/SHA256SUMS
+
+      - name: Record attestation in release manifest
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: node scripts/enrich-release-manifest.mjs
+
+      - name: Verify release attestation
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while read -r digest file; do
+            [ -z "$file" ] && continue
+            gh attestation verify "$file" --repo ${{ github.repository }}
+          done < trust/SHA256SUMS
+
+      - name: Deploy to external repository
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PAGES_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: main
+          external_repository: aitherapp/ethos
+          allow_commit_email: true
+          user_email: github-actions[bot]@users.noreply.github.com
+          user_name: github-actions[bot]
