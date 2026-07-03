@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.58';
+const APP_VERSION = '3.1.59';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.59',
+    title: 'Compact Mobile Header',
+    date: '2026-07-03',
+    changes: [
+      'Uses short transport labels on very small screens so the chat header no longer collides with security status.',
+      'Keeps the full secure transport wording on wider screens.',
+    ],
+  },
   {
     version: '3.1.58',
     title: 'Mobile Panel Polish',
@@ -1351,13 +1360,21 @@ export default function App() {
                       ? groups.find(g => g.id === activeGroup)?.name 
                       : (activePeer ? (iroh.getPeerName(activePeer) || `Node_${activePeer.slice(0, 4)}`) : '')}
                   </h1>
-                  <span className="shrink-0 max-w-[9rem] truncate px-2 py-0.5 rounded bg-surface-rail text-[9px] text-brand border border-brand/20 font-bold uppercase tracking-widest">
-                    {activeGroup ? 'Secure group' : activePeer ? iroh.getPeerTransportStatus(activePeer).label : 'Secure chat'}
+                  <span className="shrink-0 max-w-[4.5rem] xs:max-w-[9rem] truncate px-1.5 xs:px-2 py-0.5 rounded bg-surface-rail text-[9px] text-brand border border-brand/20 font-bold uppercase tracking-widest">
+                    <span className="xs:hidden">
+                      {activeGroup ? 'GROUP' : activePeer ? iroh.getPeerTransportStatus(activePeer).mode.toUpperCase() : 'CHAT'}
+                    </span>
+                    <span className="hidden xs:inline">
+                      {activeGroup ? 'Secure group' : activePeer ? iroh.getPeerTransportStatus(activePeer).label : 'Secure chat'}
+                    </span>
                   </span>
                 </div>
-                <div className="flex shrink-0 items-center gap-2 xs:gap-4 text-[10px] uppercase font-bold">
+                <div className="flex shrink-0 items-center gap-1.5 xs:gap-4 text-[10px] uppercase font-bold">
                   <div className="w-px h-3 bg-border opacity-20"></div>
-                  <span className="flex items-center gap-1 text-brand/80"><Shield className="w-3 h-3" /> QUANTUM_SAFE</span>
+                  <span className="flex items-center gap-1 text-brand/80" title="Quantum safe">
+                    <Shield className="w-3 h-3" />
+                    <span className="hidden xs:inline">QUANTUM_SAFE</span>
+                  </span>
                   <div className="w-px h-3 bg-border opacity-20"></div>
                   <span className={cn(
                     "flex items-center gap-1",

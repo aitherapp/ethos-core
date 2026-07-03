@@ -540,7 +540,7 @@ export class IrohManager {
     }
 
     // Refresh assets on version mismatch without deleting user-facing metadata.
-    if (syncLocalVersion(localStorage, '3.1.58')) {
+    if (syncLocalVersion(localStorage, '3.1.59')) {
       // Hard reload to clear in-memory state and fetch fresh assets
       window.location.replace(window.location.href);
       return;
