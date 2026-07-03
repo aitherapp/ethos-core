@@ -1,7 +1,7 @@
 # E T H O S Core - Progress Report
 
 **Date:** 2026-07-03
-**Version:** 3.1.59
+**Version:** 3.1.60
 **Component:** WebRTC Tunnel Establishment (`src/lib/iroh.ts`)
 **Status:** Phase 1 and Phase 2 implemented; Phase 3+ remain on the reliable transport roadmap
 
@@ -19,7 +19,7 @@ Users could not establish secure WebRTC tunnels between peers. The root causes w
 
 This report now covers the current public codebase. For the forward-looking task list, see `docs/plans/2026-06-11-reliable-peer-transport.md`.
 
-Latest staging polish: the right-rail Network Metrics panel now uses real app diagnostics instead of decorative document-sync text, scrolls on mobile, and the mobile hamburger menu has a foregrounded, more opaque dropdown with larger click targets. The chat header now shows the secure transport mode only once, uses short labels on very small screens, and keeps the quantum-safe status icon-only there to avoid collisions.
+Latest staging polish: the right-rail Network Metrics panel now uses real app diagnostics instead of decorative document-sync text, scrolls on mobile, and the mobile hamburger menu has a foregrounded, more opaque dropdown with larger click targets that stay tappable while Network / Metrics is open. The chat header now shows the secure transport mode only once, uses short labels on very small screens, and keeps the quantum-safe status icon-only there to avoid collisions.
 
 ---
 
@@ -183,9 +183,9 @@ npm run build  # Vite production build
 
 ## Cache Invalidation Strategy
 
-1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.59'` triggers fresh install
+1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.60'` triggers fresh install
 2. **localStorage version check** – Detects old version, clears stale data, hard reloads
-3. **Manifest query param** – `manifest.webmanifest?v=3.1.59` bypasses browser cache
+3. **Manifest query param** – `manifest.webmanifest?v=3.1.60` bypasses browser cache
 4. **Vite asset hashes** – Content-based filenames for long-term cache busting
 
 ---

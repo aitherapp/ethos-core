@@ -244,6 +244,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.60 – Mobile Menu Tap Fix (2026-07-03)
+
+- Keeps the hamburger dropdown above the mobile panel overlay so links remain tappable while Network / Metrics is open.
+
 ### v3.1.59 – Compact Mobile Header (2026-07-03)
 
 - Shortened the secure transport badge on very small screens (`RELAY`, `DIRECT`, `GROUP`, `CHAT`) while preserving full labels on wider screens.

@@ -75,9 +75,17 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.59';
+const APP_VERSION = '3.1.60';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.60',
+    title: 'Mobile Menu Tap Fix',
+    date: '2026-07-03',
+    changes: [
+      'Keeps the hamburger dropdown above the mobile panel overlay so menu links remain tappable.',
+    ],
+  },
   {
     version: '3.1.59',
     title: 'Compact Mobile Header',
@@ -998,7 +1006,10 @@ export default function App() {
         onChange={handleFileShare}
       />
       {/* Top Navigation / Title Bar */}
-      <nav className="relative h-12 bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20">
+      <nav className={cn(
+        "relative h-12 bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20",
+        showMobileMenu && "z-[130]"
+      )}>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => {
