@@ -16,9 +16,10 @@ The preferred production path is WebRTC over user-managed, production-grade TURN
 
 - Phase 1 is implemented in the current codebase, with signaling session IDs, duplicate suppression, stale-session filtering, bounded pending signals, and focused tests.
 - Phase 2 is implemented in the current codebase, with configurable ICE/TURN settings, local persistence, hosted deployment defaults, provider presets, candidate testing, and README guidance.
-- Phase 3 is the next unstarted phase.
-- Phase 4 is partially present through encrypted relay messaging, but it still needs to be completed against the separate fallback transport requirements below.
-- Phase 5 and Phase 6 remain open.
+- Phase 3 is deferred as an advanced/debug escape hatch because it requires users to exchange copy/paste blocks out of band.
+- Phase 4 is implemented in the current codebase, with a dedicated encrypted relay data topic, replay-resistant envelopes, key confirmation, small relay-file limits, and session-bound relay context.
+- Phase 5 is implemented in the current codebase, with product-friendly direct/relay/connecting/unavailable transport states.
+- Phase 6 remains open for full production readiness verification.
 
 ## Non-Negotiable Security Invariants
 
@@ -135,14 +136,14 @@ flowchart LR
 - Modify: `src/lib/iroh.ts`
 - Modify: `src/App.tsx`
 
-- [ ] Add a Nostr data topic separate from signaling.
-- [ ] Establish fallback key material with the same hybrid quantum-safe handshake if WebRTC never connects.
-- [ ] Bind fallback keys to peer identity, session ID, and transport mode.
-- [ ] Route `sendMessage()` through WebRTC when ratchet-ready, otherwise through encrypted Nostr fallback.
-- [ ] Preserve Double Ratchet or equivalent forward-secret message-key evolution for fallback mode.
-- [ ] Add small encrypted file chunk fallback with a conservative size limit.
-- [ ] For large files, show clear guidance: direct secure tunnel required or choose a smaller file.
-- [ ] Do not add plaintext media fallback. Audio/video use secure WebRTC or remain unavailable.
+- [x] Add a Nostr data topic separate from signaling.
+- [x] Establish fallback key material with the same hybrid quantum-safe handshake if WebRTC never connects.
+- [x] Bind fallback keys to peer identity, session ID, and transport mode.
+- [x] Route `sendMessage()` through WebRTC when ratchet-ready, otherwise through encrypted Nostr fallback.
+- [x] Preserve Double Ratchet or equivalent forward-secret message-key evolution for fallback mode.
+- [x] Add small encrypted file chunk fallback with a conservative size limit.
+- [x] For large files, show clear guidance: direct secure tunnel required or choose a smaller file.
+- [x] Do not add plaintext media fallback. Audio/video use secure WebRTC or remain unavailable.
 
 **Security requirements:**
 - Fallback data events must include nonce/message IDs and reject replays.
@@ -160,14 +161,14 @@ flowchart LR
 **Files:**
 - Modify: `src/App.tsx`
 
-- [ ] Replace protocol-heavy statuses with product modes:
+- [x] Replace protocol-heavy statuses with product modes:
   - `Secure direct tunnel`
   - `Secure relay mode`
   - `Reconnecting direct tunnel`
   - `Direct files need TURN`
-- [ ] Keep technical diagnostics in settings/debug logs.
-- [ ] Let chat continue in secure relay mode after direct tunnel failure.
-- [ ] Make failed direct tunnel state actionable without requiring users to understand ICE.
+- [x] Keep technical diagnostics in settings/debug logs.
+- [x] Let chat continue in secure relay mode after direct tunnel failure.
+- [x] Make failed direct tunnel state actionable without requiring users to understand ICE.
 
 **Acceptance criteria:**
 - A non-technical user can tell whether chat is usable.

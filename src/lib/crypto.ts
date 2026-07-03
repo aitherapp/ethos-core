@@ -45,7 +45,8 @@ export async function deriveHybridSecret(
   identity: QuantumIdentity,
   peerClassicalPK: string,
   peerPqcPKOrCT: string,
-  isInitiator: boolean
+  isInitiator: boolean,
+  context = 'iroh-hybrid-v1'
 ): Promise<{ secret: CryptoKey; ciphertext?: string; secretBytes?: string }> {
   const kem = await createMlKem1024();
   let ssClassical: ArrayBuffer;
@@ -81,11 +82,40 @@ export async function deriveHybridSecret(
   combinedSecret.set(new Uint8Array(ssClassical), 0);
   combinedSecret.set(ssPqc, ssClassical.byteLength);
 
-  const secret = await deriveKeyFromMaster(combinedSecret);
-  return { secret, ciphertext, secretBytes: b64encode(combinedSecret) };
+  const secret = await deriveKeyFromMaster(combinedSecret, context);
+  return {
+    secret,
+    ciphertext,
+    secretBytes: context === 'iroh-hybrid-v1'
+      ? b64encode(combinedSecret)
+      : await bindSecretBytesToContext(b64encode(combinedSecret), `${context}:ratchet`),
+  };
 }
 
-async function deriveKeyFromMaster(master: Uint8Array): Promise<CryptoKey> {
+export async function bindSecretBytesToContext(secretBytes: string, context: string): Promise<string> {
+  const masterKey = await wc.subtle.importKey(
+    'raw',
+    bufferSource(b64decode(secretBytes)),
+    'HKDF',
+    false,
+    ['deriveBits']
+  );
+
+  const bits = await wc.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      salt: new Uint8Array(),
+      info: new TextEncoder().encode(context),
+      hash: 'SHA-256',
+    },
+    masterKey,
+    512
+  );
+
+  return b64encode(new Uint8Array(bits));
+}
+
+async function deriveKeyFromMaster(master: Uint8Array, context: string): Promise<CryptoKey> {
   const masterKey = await wc.subtle.importKey(
     'raw',
     bufferSource(master),
@@ -98,7 +128,7 @@ async function deriveKeyFromMaster(master: Uint8Array): Promise<CryptoKey> {
     {
       name: 'HKDF',
       salt: new Uint8Array(),
-      info: new TextEncoder().encode('iroh-hybrid-v1'),
+      info: new TextEncoder().encode(context),
       hash: 'SHA-256',
     },
     masterKey,

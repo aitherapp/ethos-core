@@ -244,6 +244,19 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.56 – Secure Relay Mode (2026-07-03)
+
+**Encrypted relay fallback**
+- Separated encrypted relay data events from signaling events with a dedicated Nostr kind and data topic.
+- Added relay data envelopes with message IDs, nonces, session checks, and replay rejection.
+- Bound relay fallback derivation to peer identity, relay session, and secure relay transport mode.
+- Added explicit relay key confirmation before accepting fallback data.
+- Limited relay-only file transfer to small files and tells users when direct files need TURN.
+
+**Product status**
+- Replaced protocol-heavy peer/header labels with `Secure direct tunnel`, `Secure relay mode`, and usable connection states.
+- Relay-only success now clears the connecting state instead of leaving the UI stuck.
+
 ### v3.1.55 – Staging Release Flow (2026-07-03)
 
 **Release workflow**

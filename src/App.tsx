@@ -75,9 +75,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.55';
+const APP_VERSION = '3.1.56';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.56',
+    title: 'Secure Relay Mode',
+    date: '2026-07-03',
+    changes: [
+      'Separated encrypted relay data from signaling so fallback chat has its own Nostr transport path.',
+      'Added replay-resistant relay envelopes, relay key confirmation, and session-bound relay key context.',
+      'Updated the main UI to show secure direct tunnel and secure relay mode instead of protocol-heavy labels.',
+    ],
+  },
   {
     version: '3.1.55',
     title: 'Staging Release Flow',
@@ -487,7 +497,12 @@ export default function App() {
     iroh.onStatus((type, message) => {
       setStatus({ type, message });
       if (type === 'error') setIsConnecting(false);
-      if (message.includes('Tunnel Established')) setIsConnecting(false);
+      if (
+        message.includes('Secure direct tunnel') ||
+        message.includes('Secure relay mode') ||
+        message.includes('Tunnel Established') ||
+        message.includes('Secure Relay Ready')
+      ) setIsConnecting(false);
 
       setTimeout(() => setStatus(null), 5000);
     });
@@ -556,10 +571,10 @@ export default function App() {
         setNewPeerId('');
         setKnownPeers(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
         setShowAddPeer(false);
-        // Stay in connecting state until Tunnel Established / error status fires
+        // Stay in connecting state until secure direct/relay mode or error status fires
       } catch (err) {
         console.error('Connection failed', err);
-        setStatus({ type: 'error', message: 'Connection failed. Verify peer ID and relay mesh.' });
+        setStatus({ type: 'error', message: 'Could not reach peer. Keep ETHOS open on both devices and verify the peer ticket.' });
         setIsConnecting(false);
       }
     }
@@ -577,7 +592,7 @@ export default function App() {
       setUnverifiedDiscovery(null);
     } catch (err) {
       console.error('Connection failed', err);
-      setStatus({ type: 'error', message: 'Connection failed. Verify peer ID and relay mesh.' });
+      setStatus({ type: 'error', message: 'Could not reach peer. Keep ETHOS open on both devices and verify the peer ticket.' });
       setIsConnecting(false);
     }
   };
@@ -858,9 +873,9 @@ export default function App() {
       } else {
         const isSecure = iroh.isHandshakeComplete(activePeer);
         if (!isSecure) {
-          iroh.notifyStatus('warning', 'Securing tunnel... please wait.');
+          iroh.notifyStatus('warning', 'Connecting securely... please wait.');
         } else {
-          iroh.notifyStatus('error', 'Peer unreachable.');
+          iroh.notifyStatus('error', 'Peer unavailable.');
         }
       }
     }
@@ -1098,6 +1113,7 @@ export default function App() {
 
               {filteredPeers.map(peerId => {
                 const isFailed = iroh.getFailedPeers().includes(peerId);
+                const transport = iroh.getPeerTransportStatus(peerId);
                 return (
                   <div
                     key={peerId}
@@ -1122,15 +1138,16 @@ export default function App() {
                         )}>
                           {iroh.getPeerName(peerId) || `Node_${peerId.slice(0, 4)}`}
                         </div>
-                        {iroh.isHandshakeComplete(peerId) ? (
-                          <span className="text-[7px] bg-brand/10 text-brand px-1 rounded border border-brand/20 font-bold uppercase tracking-tighter">SECURE_PQC</span>
-                        ) : (
-                          peers.includes(peerId) ? (
-                            <span className="text-[7px] text-orange-400 animate-pulse font-bold tracking-tighter">SECURING...</span>
-                          ) : isFailed ? (
-                            <span className="text-[7px] text-red-500 font-bold uppercase tracking-tighter">FAILED</span>
-                          ) : null
-                        )}
+                        <span className={cn(
+                          'text-[7px] px-1 rounded border font-bold uppercase tracking-tighter',
+                          transport.usable ? 'bg-brand/10 text-brand border-brand/20' :
+                            transport.mode === 'connecting' ? 'text-orange-400 border-orange-400/20 animate-pulse' :
+                              'text-red-500 border-red-500/20'
+                        )}>
+                          {transport.mode === 'direct' ? 'DIRECT' :
+                            transport.mode === 'relay' ? 'RELAY' :
+                              transport.mode === 'connecting' ? 'CONNECTING' : 'UNAVAILABLE'}
+                        </span>
                       </div>
                       <div className="text-[10px] opacity-40 truncate font-mono">{peerId}</div>
                     </div>
@@ -1297,7 +1314,7 @@ export default function App() {
               <Shield className="w-12 h-12 text-border mb-4 opacity-20" />
               <h2 className="text-sm font-bold opacity-30 uppercase tracking-[0.2em]">ETHOS Isolated</h2>
               <p className="text-[11px] text-text-secondary mt-2 max-w-xs leading-relaxed uppercase tracking-tighter">
-                Enter a peer ticket or create a group to establish a secure ETHOS tunnel.
+                Enter a peer ticket or create a group to start a secure chat.
               </p>
             </div>
           ) : (
@@ -1310,22 +1327,16 @@ export default function App() {
                       : (activePeer ? (iroh.getPeerName(activePeer) || `Node_${activePeer.slice(0, 4)}`) : '')}
                   </h1>
                   <span className="px-2 py-0.5 rounded bg-surface-rail text-[9px] text-brand border border-brand/20 font-bold uppercase tracking-widest">
-                    {activeGroup ? 'PQ_MESH_GROUP' : 'PQXDH_TUNNEL'}
+                    {activeGroup ? 'Secure group' : activePeer ? iroh.getPeerTransportStatus(activePeer).label : 'Secure chat'}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-[10px] uppercase font-bold">
-                  <div className={cn(
-                    "flex items-center gap-2 px-2 py-0.5 rounded border transition-all duration-500",
-                    signalMeshCount > 0 
-                      ? "bg-blue-500/10 border-blue-500/20 text-blue-400" 
-                      : "bg-red-500/10 border-red-500/20 text-red-500"
-                  )}>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      signalMeshCount > 0 ? "bg-blue-400 animate-pulse" : "bg-red-500"
-                    )} />
-                    <span>SIGNALING_MESH: {signalMeshCount}</span>
-                  </div>
+                  {activePeer && (
+                    <div className="flex items-center gap-2 px-2 py-0.5 rounded border border-brand/20 bg-brand/10 text-brand transition-all duration-500">
+                      <div className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
+                      <span>{iroh.getPeerTransportStatus(activePeer).label}</span>
+                    </div>
+                  )}
                   <div className="w-px h-3 bg-border opacity-20"></div>
                   <span className="flex items-center gap-1 text-brand/80"><Shield className="w-3 h-3" /> QUANTUM_SAFE</span>
                   <div className="w-px h-3 bg-border opacity-20"></div>
@@ -1656,12 +1667,12 @@ export default function App() {
             >
               <div className="flex items-center gap-3 mb-6">
                 <Plus className="w-5 h-5 text-brand" />
-                <h2 className="text-sm font-bold uppercase tracking-widest text-brand">Connect to Node</h2>
+                <h2 className="text-sm font-bold uppercase tracking-widest text-brand">Add Peer</h2>
               </div>
               
               <div className="space-y-6">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Remote Node Identity</label>
+                  <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Peer Ticket Or Display Name</label>
                    <textarea 
                      value={newPeerId}
                      onChange={(e) => setNewPeerId(e.target.value)}
@@ -1687,7 +1698,7 @@ export default function App() {
                     disabled={!newPeerId.trim() || isConnecting}
                     className="bg-brand text-black px-6 py-2 rounded text-[10px] uppercase font-bold hover:opacity-90 disabled:opacity-30 transition-opacity whitespace-nowrap"
                   >
-                    {isConnecting ? 'Establishing...' : 'Establish Tunnel'}
+                    {isConnecting ? 'Connecting...' : 'Connect'}
                   </button>
                 </div>
               </div>

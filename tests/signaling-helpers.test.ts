@@ -23,11 +23,32 @@ import {
   chooseDiscoveryResult,
   syncLocalVersion,
   SIGNAL_KIND,
+  RELAY_DATA_KIND,
+  buildRelayDataTopic,
+  buildRelayKeyContext,
+  buildRelayEnvelope,
+  shouldAcceptRelayEnvelope,
+  shouldAcceptRelayData,
+  canSendFileOverTransport,
+  getProductTransportStatus,
 } from '../src/lib/iroh';
 
 describe('signaling helpers', () => {
   it('uses regular non-replaceable signaling kind', () => {
     expect(SIGNAL_KIND).toBe(41002);
+  });
+
+  it('uses a separate regular kind and topic for encrypted relay data', () => {
+    expect(RELAY_DATA_KIND).toBe(41003);
+    expect(RELAY_DATA_KIND).not.toBe(SIGNAL_KIND);
+    expect(buildRelayDataTopic('peer-topic')).toBe('peer-topic:data');
+  });
+
+  it('builds the same relay key context for both peers in a session', () => {
+    expect(buildRelayKeyContext('peer-b', 'peer-a', 'relay-session')).toBe(
+      buildRelayKeyContext('peer-a', 'peer-b', 'relay-session')
+    );
+    expect(buildRelayKeyContext('peer-a', 'peer-b', 'relay-session')).toContain('secure-relay:relay-session');
   });
 
   it('adds session id as a nostr tag when present', () => {
@@ -164,6 +185,72 @@ describe('signaling helpers', () => {
     expect(isRelayMessageForSession(undefined, 'legacy-session')).toBe(true);
   });
 
+  it('wraps relay payloads in a replay-resistant data envelope', () => {
+    const envelope = buildRelayEnvelope({
+      sessionId: 'relay-session',
+      message: { id: 'message-1', type: 'text' },
+      now: 1234,
+      idFactory: () => 'message-id',
+      nonceFactory: () => 'nonce-id',
+    });
+
+    expect(envelope).toEqual({
+      protocolVersion: 1,
+      transportMode: 'secure-relay',
+      sessionId: 'relay-session',
+      messageId: 'message-id',
+      nonce: 'nonce-id',
+      sentAt: 1234,
+      message: { id: 'message-1', type: 'text' },
+    });
+  });
+
+  it('rejects stale or replayed relay data envelopes before decrypting payloads', () => {
+    const seen = new BoundedEventCache(10);
+    const envelope = buildRelayEnvelope({
+      sessionId: 'relay-session',
+      message: { id: 'message-1' },
+      idFactory: () => 'message-id',
+      nonceFactory: () => 'nonce-id',
+    });
+
+    expect(shouldAcceptRelayEnvelope(envelope, {
+      establishedSession: 'relay-session',
+      confirmed: true,
+      seenMessageIds: seen,
+    })).toEqual({ ok: true });
+
+    expect(shouldAcceptRelayEnvelope(envelope, {
+      establishedSession: 'relay-session',
+      confirmed: true,
+      seenMessageIds: seen,
+    })).toEqual({ ok: false, reason: 'replay' });
+
+    expect(shouldAcceptRelayEnvelope({ ...envelope, messageId: 'message-2', sessionId: 'old-session' }, {
+      establishedSession: 'relay-session',
+      confirmed: true,
+      seenMessageIds: new BoundedEventCache(10),
+    })).toEqual({ ok: false, reason: 'stale-session' });
+  });
+
+  it('fails closed for relay data until key confirmation completes', () => {
+    expect(shouldAcceptRelayData({
+      relayStatus: 'connected',
+      handshakeComplete: true,
+      relayConfirmed: false,
+      establishedSession: 'relay-session',
+      incomingSession: 'relay-session',
+    })).toEqual({ ok: false, reason: 'unconfirmed' });
+
+    expect(shouldAcceptRelayData({
+      relayStatus: 'connected',
+      handshakeComplete: true,
+      relayConfirmed: true,
+      establishedSession: 'relay-session',
+      incomingSession: 'relay-session',
+    })).toEqual({ ok: true });
+  });
+
   it('bounds queued signaling by peer and total pending peers', () => {
     expect(canQueueSignal({
       existingPeerQueueLength: 2,
@@ -246,6 +333,26 @@ describe('signaling helpers', () => {
     }).ok).toBe(false);
   });
 
+  it('limits relay file sends while keeping direct tunnel file sends available', () => {
+    expect(canSendFileOverTransport({
+      fileSize: 2 * 1024 * 1024,
+      transportMode: 'direct',
+      maxRelayFileSize: 512 * 1024,
+    })).toEqual({ ok: true });
+
+    expect(canSendFileOverTransport({
+      fileSize: 2 * 1024 * 1024,
+      transportMode: 'relay',
+      maxRelayFileSize: 512 * 1024,
+    })).toEqual({ ok: false, reason: 'relay-file-too-large' });
+
+    expect(canSendFileOverTransport({
+      fileSize: 128 * 1024,
+      transportMode: 'relay',
+      maxRelayFileSize: 512 * 1024,
+    })).toEqual({ ok: true });
+  });
+
   it('selects stale active inbound transfers for cleanup', () => {
     const transfers = new Map([
       ['active-stale', { status: 'active' as const, type: 'download' as const }],
@@ -318,5 +425,26 @@ describe('signaling helpers', () => {
     expect(storage.get('nexus_iroh_ver')).toBe('3.1.53');
     expect(storage.get('nexus_metadata')).toBe(JSON.stringify({ 'peer-1': { displayName: 'Heimdal' } }));
     expect(removedKeys).toEqual([]);
+  });
+
+  it('maps transport state to product-friendly status labels', () => {
+    expect(getProductTransportStatus({
+      directConnected: true,
+      relayConnected: true,
+      handshakeComplete: true,
+    })).toEqual({ mode: 'direct', label: 'Secure direct tunnel', usable: true });
+
+    expect(getProductTransportStatus({
+      directConnected: false,
+      relayConnected: true,
+      handshakeComplete: true,
+    })).toEqual({ mode: 'relay', label: 'Secure relay mode', usable: true });
+
+    expect(getProductTransportStatus({
+      directConnected: false,
+      relayConnected: false,
+      handshakeComplete: false,
+      failed: true,
+    })).toEqual({ mode: 'unavailable', label: 'Peer unavailable', usable: false });
   });
 });

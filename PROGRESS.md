@@ -1,7 +1,7 @@
 # E T H O S Core - Progress Report
 
 **Date:** 2026-07-03
-**Version:** 3.1.55
+**Version:** 3.1.56
 **Component:** WebRTC Tunnel Establishment (`src/lib/iroh.ts`)
 **Status:** Phase 1 and Phase 2 implemented; Phase 3+ remain on the reliable transport roadmap
 
@@ -28,8 +28,8 @@ This report now covers the current public codebase. For the forward-looking task
 | Phase 1: Stabilize Signaling | Implemented | `src/lib/iroh.ts`, `tests/signaling-helpers.test.ts`, `tests/signaling.test.ts` |
 | Phase 2: Add Production TURN Configuration | Implemented | `src/lib/iceServers.ts`, `tests/ice-servers.test.ts`, Settings UI, README ICE/TURN guidance |
 | Phase 3: Add Manual SDP Pairing | Not started | Roadmap-only; no manual offer/answer flow in source |
-| Phase 4: Add Encrypted Nostr Fallback Transport | Partial | Encrypted relay messaging exists, but the separate fallback transport requirements are not complete |
-| Phase 5: Make Status Product-Friendly | Not started | Some UI/status copy is still protocol-heavy |
+| Phase 4: Add Encrypted Nostr Fallback Transport | Implemented | Dedicated relay data kind/topic, relay envelopes, replay rejection, confirmation gate, file limit, and session-bound relay context |
+| Phase 5: Make Status Product-Friendly | Implemented | Main UI now shows direct/relay/connecting/unavailable product states |
 | Phase 6: Verify Production Readiness | Not complete | Full manual verification matrix remains open |
 
 ---
@@ -181,9 +181,9 @@ npm run build  # Vite production build
 
 ## Cache Invalidation Strategy
 
-1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.55'` triggers fresh install
+1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.56'` triggers fresh install
 2. **localStorage version check** – Detects old version, clears stale data, hard reloads
-3. **Manifest query param** – `manifest.webmanifest?v=3.1.55` bypasses browser cache
+3. **Manifest query param** – `manifest.webmanifest?v=3.1.56` bypasses browser cache
 4. **Vite asset hashes** – Content-based filenames for long-term cache busting
 
 ---
@@ -196,4 +196,3 @@ npm run build  # Vite production build
 - Relay integration tests skipped in Node.js (need browser WebSocket)
 - No UI for managing relay list persistence across sessions
 - Manual SDP pairing is not implemented yet.
-- Product-friendly transport status labels are still pending.

@@ -56,6 +56,131 @@ if (savedRelays) {
 let USER_ICE_SERVERS = loadUserIceServers();
 
 export const SIGNAL_KIND = 41002;
+export const RELAY_DATA_KIND = 41003;
+const RELAY_DATA_TOPIC_SUFFIX = ':data';
+const RELAY_ENVELOPE_VERSION = 1;
+const MAX_RELAY_FILE_SIZE = 512 * 1024;
+
+export type RelayTransportMode = 'direct' | 'relay' | 'connecting' | 'unavailable';
+
+export type RelayEnvelope = {
+  protocolVersion: 1;
+  transportMode: 'secure-relay';
+  sessionId: string;
+  messageId: string;
+  nonce: string;
+  sentAt: number;
+  message: any;
+};
+
+export function buildRelayDataTopic(peerId: string) {
+  return `${peerId}${RELAY_DATA_TOPIC_SUFFIX}`;
+}
+
+export function buildRelayKeyContext(localPeerId: string, remotePeerId: string, sessionId: string) {
+  const [peerA, peerB] = [localPeerId, remotePeerId].sort();
+  return `iroh-hybrid-v1:secure-relay:${sessionId}:${peerA}:${peerB}`;
+}
+
+export function buildRelayEnvelope({
+  sessionId,
+  message,
+  now = Date.now(),
+  idFactory = uuidv4,
+  nonceFactory = uuidv4,
+}: {
+  sessionId: string;
+  message: any;
+  now?: number;
+  idFactory?: () => string;
+  nonceFactory?: () => string;
+}): RelayEnvelope {
+  return {
+    protocolVersion: RELAY_ENVELOPE_VERSION,
+    transportMode: 'secure-relay',
+    sessionId,
+    messageId: idFactory(),
+    nonce: nonceFactory(),
+    sentAt: now,
+    message,
+  };
+}
+
+export function shouldAcceptRelayData({
+  relayStatus,
+  handshakeComplete,
+  relayConfirmed,
+  establishedSession,
+  incomingSession,
+}: {
+  relayStatus: RelayConnectionStatus | undefined;
+  handshakeComplete: boolean;
+  relayConfirmed: boolean;
+  establishedSession: string | undefined;
+  incomingSession: string | undefined;
+}): { ok: true } | { ok: false; reason: string } {
+  if (relayStatus !== 'connected') return { ok: false, reason: 'not-connected' };
+  if (!handshakeComplete) return { ok: false, reason: 'handshake-incomplete' };
+  if (!relayConfirmed) return { ok: false, reason: 'unconfirmed' };
+  if (!isRelayMessageForSession(establishedSession, incomingSession)) return { ok: false, reason: 'stale-session' };
+  return { ok: true };
+}
+
+export function shouldAcceptRelayEnvelope(
+  envelope: Partial<RelayEnvelope> | undefined,
+  {
+    establishedSession,
+    confirmed,
+    seenMessageIds,
+  }: {
+    establishedSession: string | undefined;
+    confirmed: boolean;
+    seenMessageIds: BoundedEventCache;
+  }
+): { ok: true } | { ok: false; reason: string } {
+  if (!confirmed) return { ok: false, reason: 'unconfirmed' };
+  if (!envelope || envelope.protocolVersion !== RELAY_ENVELOPE_VERSION) return { ok: false, reason: 'bad-version' };
+  if (envelope.transportMode !== 'secure-relay') return { ok: false, reason: 'bad-transport' };
+  if (!envelope.sessionId || !envelope.messageId || !envelope.nonce || !envelope.message) {
+    return { ok: false, reason: 'malformed' };
+  }
+  if (!isRelayMessageForSession(establishedSession, envelope.sessionId)) return { ok: false, reason: 'stale-session' };
+  if (seenMessageIds.has(envelope.messageId)) return { ok: false, reason: 'replay' };
+  seenMessageIds.add(envelope.messageId);
+  return { ok: true };
+}
+
+export function canSendFileOverTransport({
+  fileSize,
+  transportMode,
+  maxRelayFileSize = MAX_RELAY_FILE_SIZE,
+}: {
+  fileSize: number;
+  transportMode: 'direct' | 'relay' | 'none';
+  maxRelayFileSize?: number;
+}): { ok: true } | { ok: false; reason: string } {
+  if (!Number.isFinite(fileSize) || fileSize <= 0) return { ok: false, reason: 'invalid-file-size' };
+  if (transportMode === 'none') return { ok: false, reason: 'no-transport' };
+  if (transportMode === 'relay' && fileSize > maxRelayFileSize) return { ok: false, reason: 'relay-file-too-large' };
+  return { ok: true };
+}
+
+export function getProductTransportStatus({
+  directConnected,
+  relayConnected,
+  handshakeComplete,
+  failed = false,
+}: {
+  directConnected: boolean;
+  relayConnected: boolean;
+  handshakeComplete: boolean;
+  failed?: boolean;
+}): { mode: RelayTransportMode; label: string; usable: boolean } {
+  if (directConnected && handshakeComplete) return { mode: 'direct', label: 'Secure direct tunnel', usable: true };
+  if (relayConnected && handshakeComplete) return { mode: 'relay', label: 'Secure relay mode', usable: true };
+  if (failed) return { mode: 'unavailable', label: 'Peer unavailable', usable: false };
+  return { mode: 'connecting', label: 'Connecting securely', usable: false };
+}
 
 export function buildSignalTags(topicId: string, iv: string, sessionId?: string) {
   const tags = [['d', topicId], ['iv', iv]];
@@ -367,7 +492,9 @@ export class IrohManager {
   private relaySessions: Map<string, string> = new Map();
   private establishedRelaySessions: Map<string, string> = new Map();
   private relayStatus: Map<string, 'connecting' | 'connected'> = new Map();
+  private relayConfirmed: Map<string, boolean> = new Map();
   private relayHelloAcks: Map<string, any> = new Map();
+  private processedRelayMessageIds = new BoundedEventCache(1000);
   private relayHealth: Map<string, SignalRelayHealth> = new Map();
   private connectionAttemptStartedAt: Map<string, number> = new Map();
   private noResponseTimers: Map<string, number> = new Map();
@@ -413,7 +540,7 @@ export class IrohManager {
     }
 
     // Refresh assets on version mismatch without deleting user-facing metadata.
-    if (syncLocalVersion(localStorage, '3.1.55')) {
+    if (syncLocalVersion(localStorage, '3.1.56')) {
       // Hard reload to clear in-memory state and fetch fresh assets
       window.location.replace(window.location.href);
       return;
@@ -462,6 +589,7 @@ export class IrohManager {
 
     // Initial listen on own ID to receive incoming offers
     this.listenOnNostr(this.currentPeerId!);
+    this.listenOnRelayData(this.currentPeerId!);
     
     await this.setupPeer(displayName);
 
@@ -481,6 +609,7 @@ export class IrohManager {
     this.isSignalingSettled = false;
     this.notifyStatus('info', 'Connecting to Global Relay Nodes...');
     this.listenOnNostr(this.currentPeerId!);
+    this.listenOnRelayData(this.currentPeerId!);
 
     setTimeout(async () => {
        this.isSignalingSettled = true;
@@ -502,16 +631,21 @@ export class IrohManager {
     );
   }
 
-  private async listenOnNostr(topicId: string) {
-    if (!topicId || this.activeSubscriptions.has(topicId)) return;
-    this.activeSubscriptions.add(topicId);
+  private listenOnRelayData(peerId: string) {
+    return this.listenOnNostr(buildRelayDataTopic(peerId), RELAY_DATA_KIND);
+  }
+
+  private async listenOnNostr(topicId: string, kind = SIGNAL_KIND) {
+    const subscriptionKey = `${kind}:${topicId}`;
+    if (!topicId || this.activeSubscriptions.has(subscriptionKey)) return;
+    this.activeSubscriptions.add(subscriptionKey);
 
     const secret = await this.getSignalingSecret(topicId);
-    console.debug(`[Nostr] Subscribing to topic: ${topicId.slice(0, 8)}...`);
+    console.debug(`[Nostr] Subscribing to topic: ${topicId.slice(0, 8)} kind=${kind}...`);
     
-    // Regular (non-replaceable) Signaling using Kind 41002 + d tag for filtering
+    // Regular (non-replaceable) events using d tag for filtering
     const filter = {
-      kinds: [41002],
+      kinds: [kind],
       '#d': [topicId]
     };
 
@@ -539,7 +673,9 @@ export class IrohManager {
               const sessionLabel = signal.sessionId ? ` session=${signal.sessionId.slice(0, 8)}` : ' legacy-session';
               console.debug(`[Nostr] Mesh IN: ${signal.type} from ${signal.senderId.slice(0, 8)}${sessionLabel}`);
 
-              if (signal.type === 'offer') {
+              if (kind === RELAY_DATA_KIND) {
+                if (signal.type === 'relay-message') this.handleRelayMessage(signal.senderId, signal);
+              } else if (signal.type === 'offer') {
                 if (!signal.sessionId) {
                   console.debug(`[Nostr] Ignoring legacy offer without session id from ${signal.senderId.slice(0, 8)}`);
                   return;
@@ -552,7 +688,10 @@ export class IrohManager {
                  this.handleRelayHello(signal.senderId, signal);
                } else if (signal.type === 'relay-helo-ack') {
                  this.handleRelayHelloAck(signal.senderId, signal);
+               } else if (signal.type === 'relay-confirm') {
+                 this.handleRelayConfirm(signal.senderId, signal);
                } else if (signal.type === 'relay-message') {
+                 // Legacy relay data path kept for older builds during rollout.
                  this.handleRelayMessage(signal.senderId, signal);
                } else if (signal.type === 'answer' || signal.type === 'candidate' || signal.type === 'sdp') {
                  if (!this.isSignalForCurrentSession(signal.senderId, signal)) return;
@@ -583,7 +722,7 @@ export class IrohManager {
           }
         }
       );
-      this.nostrSubs.set(topicId, sub);
+      this.nostrSubs.set(subscriptionKey, sub);
     } catch (e) {
       console.error(`[Nostr] Sub Error for ${topicId}:`, e);
     }
@@ -742,13 +881,15 @@ export class IrohManager {
         this.qIdentity,
         signal.classicalPublicKey,
         signal.pqcPublicKey,
-        false
+        false,
+        buildRelayKeyContext(this.currentPeerId, peerId, signal.sessionId)
       );
       this.secrets.set(peerId, secret);
       (secret as any).secretBytes = secretBytes;
       this.ratchetStates.set(peerId, await initializeRatchet(secretBytes, false));
       this.handshakeStatus.set(peerId, true);
       this.relayStatus.set(peerId, 'connected');
+      this.relayConfirmed.set(peerId, false);
       this.relaySessions.set(peerId, signal.sessionId);
       this.establishedRelaySessions.set(peerId, signal.sessionId);
       this.peerPks.set(peerId, { classical: signal.classicalPublicKey, pqc: signal.pqcPublicKey });
@@ -768,10 +909,11 @@ export class IrohManager {
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
-      this.notifyStatus('info', `Secure Relay Ready: Node_${peerId.slice(0, 4)}`);
+      this.notifyStatus('info', `Secure relay mode: Node_${peerId.slice(0, 4)}`);
     } catch (err) {
       console.error('[Nostr] Relay HELO failed:', err);
       this.relayStatus.delete(peerId);
+      this.relayConfirmed.delete(peerId);
     }
   }
 
@@ -791,13 +933,15 @@ export class IrohManager {
         this.qIdentity,
         signal.classicalPublicKey,
         signal.pqcCiphertext,
-        true
+        true,
+        buildRelayKeyContext(this.currentPeerId, peerId, signal.sessionId)
       );
       this.secrets.set(peerId, secret);
       (secret as any).secretBytes = secretBytes;
       this.ratchetStates.set(peerId, await initializeRatchet(secretBytes, true));
       this.handshakeStatus.set(peerId, true);
       this.relayStatus.set(peerId, 'connected');
+      this.relayConfirmed.set(peerId, true);
       this.establishedRelaySessions.set(peerId, signal.sessionId);
       this.peerPks.set(peerId, { classical: signal.classicalPublicKey, pqc: 'Encapsulated Session' });
 
@@ -806,18 +950,57 @@ export class IrohManager {
         this.persistMetadata();
       }
 
-      this.notifyStatus('info', `Secure Relay Ready: Node_${peerId.slice(0, 4)}`);
+      this.sendNostrSignal(peerId, {
+        senderId: this.currentPeerId,
+        type: 'relay-confirm',
+        sessionId: signal.sessionId,
+      });
+      this.notifyStatus('info', `Secure relay mode: Node_${peerId.slice(0, 4)}`);
     } catch (err) {
       console.error('[Nostr] Relay HELO_ACK failed:', err);
       this.relayStatus.delete(peerId);
+      this.relayConfirmed.delete(peerId);
     }
   }
 
+  private handleRelayConfirm(peerId: string, signal: any) {
+    if (!shouldAcceptRelayData({
+      relayStatus: this.relayStatus.get(peerId),
+      handshakeComplete: this.handshakeStatus.get(peerId) === true,
+      relayConfirmed: true,
+      establishedSession: this.establishedRelaySessions.get(peerId),
+      incomingSession: signal.sessionId,
+    }).ok) return;
+
+    this.relayConfirmed.set(peerId, true);
+    this.notifyStatus('info', `Secure relay mode: Node_${peerId.slice(0, 4)}`);
+  }
+
   private handleRelayMessage(peerId: string, signal: any) {
-    if (this.relayStatus.get(peerId) !== 'connected') return;
-    if (!isRelayMessageForSession(this.establishedRelaySessions.get(peerId), signal.sessionId)) return;
-    if (!signal.message) return;
-    this.processIncomingMessage(peerId, signal.message);
+    const dataCheck = shouldAcceptRelayData({
+      relayStatus: this.relayStatus.get(peerId),
+      handshakeComplete: this.handshakeStatus.get(peerId) === true,
+      relayConfirmed: this.relayConfirmed.get(peerId) === true,
+      establishedSession: this.establishedRelaySessions.get(peerId),
+      incomingSession: signal.sessionId,
+    });
+    if (!dataCheck.ok) return;
+
+    const envelope = signal.envelope ?? (
+      signal.message ? buildRelayEnvelope({
+        sessionId: signal.sessionId,
+        message: signal.message,
+        idFactory: () => signal.message?.id || signal.eventId || uuidv4(),
+      }) : undefined
+    );
+    const envelopeCheck = shouldAcceptRelayEnvelope(envelope, {
+      establishedSession: this.establishedRelaySessions.get(peerId),
+      confirmed: this.relayConfirmed.get(peerId) === true,
+      seenMessageIds: this.processedRelayMessageIds,
+    });
+    if (!envelopeCheck.ok) return;
+
+    this.processIncomingMessage(peerId, envelope.message);
   }
 
   private async handleNostrOffer(peerId: string, signal: any) {
@@ -888,7 +1071,7 @@ export class IrohManager {
     return buildIceServers(USER_ICE_SERVERS).map(({ layer, label, ...server }) => server);
   }
 
-  private async sendNostrSignal(topicId: string, payload: any) {
+  private async sendNostrEvent(topicId: string, payload: any, kind = SIGNAL_KIND) {
     if (!this.signKey || this.signKey.length !== 32) return;
 
     const secret = await this.getSignalingSecret(topicId);
@@ -901,7 +1084,7 @@ export class IrohManager {
     // overwrite offers/answers on the same topic. Kind 41002 is in the
     // 40000-49999 regular range so all events are stored independently.
     const unsignedEvent = {
-      kind: SIGNAL_KIND,
+      kind,
       pubkey: getPublicKey(this.signKey!),
       created_at: Math.floor(Date.now() / 1000),
       tags,
@@ -909,7 +1092,7 @@ export class IrohManager {
     };
 
     const event = finalizeEvent(unsignedEvent, this.signKey!);
-    console.debug(`[Nostr] Signal OUT: ${payload.type}`);
+    console.debug(`[Nostr] Event OUT: ${payload.type} kind=${kind}`);
     
     // Critical encrypted signaling must fan out broadly; mobile browser relay
     // health can be stale exactly when ICE fallback needs Nostr most.
@@ -933,6 +1116,23 @@ export class IrohManager {
       });
     });
    }
+
+  private async sendNostrSignal(topicId: string, payload: any) {
+    return this.sendNostrEvent(topicId, payload, SIGNAL_KIND);
+  }
+
+  private async sendRelayData(peerId: string, message: any) {
+    const sessionId = this.establishedRelaySessions.get(peerId);
+    if (!sessionId) return;
+
+    const envelope = buildRelayEnvelope({ sessionId, message });
+    return this.sendNostrEvent(buildRelayDataTopic(peerId), {
+      senderId: this.currentPeerId,
+      type: 'relay-message',
+      sessionId,
+      envelope,
+    }, RELAY_DATA_KIND);
+  }
 
 
   // Relay health monitoring – uses only WebSocket state, no cross-origin fetch
@@ -996,7 +1196,7 @@ export class IrohManager {
     );
     this.notifyStatus(
       'warning',
-      forceRelay ? 'Direct tunnel failed; retrying through TURN relay...' : 'Tunnel failed; retrying...'
+      forceRelay ? 'Reconnecting direct tunnel through TURN...' : 'Reconnecting direct tunnel...'
     );
     this.connectionStatus.set(peerId, 'connecting');
     this.retryingPeers.add(peerId);
@@ -1039,7 +1239,7 @@ export class IrohManager {
       this.iceReconnectRetries.delete(peerId);
       this.retryingPeers.delete(peerId);
       this.flushPendingSignals(peer, peerId);
-      this.notifyStatus('info', `Tunnel Established: Node_${peerId.slice(0, 4)}`);
+      this.notifyStatus('info', `Secure direct tunnel: Node_${peerId.slice(0, 4)}`);
       
       peer.send(JSON.stringify({ 
         type: 'HELO', 
@@ -1233,6 +1433,7 @@ export class IrohManager {
     this.relaySessions.delete(ticket);
     this.establishedRelaySessions.delete(ticket);
     this.relayStatus.delete(ticket);
+    this.relayConfirmed.delete(ticket);
     this.relayHelloAcks.delete(ticket);
     this.signalSessions.set(ticket, uuidv4());
     if (!options.retryAttempt) {
@@ -1440,6 +1641,7 @@ export class IrohManager {
     this.relaySessions.clear();
     this.establishedRelaySessions.clear();
     this.relayStatus.clear();
+    this.relayConfirmed.clear();
     this.relayHelloAcks.clear();
     this.connectionAttemptStartedAt.clear();
     this.noResponseTimers.forEach(timeoutId => window.clearTimeout(timeoutId));
@@ -1721,12 +1923,7 @@ export class IrohManager {
     }
 
     if (this.relayStatus.get(peerId) === 'connected') {
-      await this.sendNostrSignal(peerId, {
-        senderId: this.currentPeerId,
-        type: 'relay-message',
-        sessionId: this.establishedRelaySessions.get(peerId),
-        message: encryptedPayload,
-      });
+      await this.sendRelayData(peerId, encryptedPayload);
       return true;
     }
 
@@ -1851,12 +2048,7 @@ export class IrohManager {
     if (conn?.connected) {
       conn.send(JSON.stringify({ ...msg, encrypted: true }));
     } else if (this.relayStatus.get(peerId) === 'connected') {
-      await this.sendNostrSignal(peerId, {
-        senderId: this.currentPeerId,
-        type: 'relay-message',
-        sessionId: this.establishedRelaySessions.get(peerId),
-        message: { ...msg, encrypted: true },
-      });
+      await this.sendRelayData(peerId, { ...msg, encrypted: true });
     } else {
       this.ensureRelayHandshake(peerId);
       return null;
@@ -1868,8 +2060,18 @@ export class IrohManager {
     const conn = this.connections.get(peerId);
     const secret = this.secrets.get(peerId);
     const canUseRelay = this.relayStatus.get(peerId) === 'connected';
+    const transportMode = conn?.connected ? 'direct' : canUseRelay ? 'relay' : 'none';
     if ((!conn?.connected && !canUseRelay) || !secret) {
       console.warn('[Nostr] No connection for file transfer');
+      return;
+    }
+
+    const filePolicy = canSendFileOverTransport({
+      fileSize: file.size,
+      transportMode,
+    });
+    if (!filePolicy.ok) {
+      this.notifyStatus('warning', 'Direct files need TURN. Secure relay mode only supports small files.');
       return;
     }
     
@@ -1943,12 +2145,7 @@ export class IrohManager {
           if (activeConn?.connected) {
             activeConn.send(JSON.stringify(msg));
           } else {
-            await this.sendNostrSignal(peerId, {
-              senderId: this.currentPeerId,
-              type: 'relay-message',
-              sessionId: this.establishedRelaySessions.get(peerId),
-              message: msg,
-            });
+            await this.sendRelayData(peerId, msg);
           }
           
           offset += data.byteLength;
@@ -2109,6 +2306,15 @@ export class IrohManager {
 
   getConnectionStatus(peerId: string) {
     return this.connectionStatus.get(peerId);
+  }
+
+  getPeerTransportStatus(peerId: string) {
+    return getProductTransportStatus({
+      directConnected: this.connections.get(peerId)?.connected === true,
+      relayConnected: this.relayStatus.get(peerId) === 'connected',
+      handshakeComplete: this.handshakeStatus.get(peerId) === true,
+      failed: this.connectionStatus.get(peerId) === 'failed',
+    });
   }
 }
 
