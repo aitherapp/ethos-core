@@ -54,10 +54,9 @@ jobs:
       - name: Deploy to staging repository
         uses: peaceiris/actions-gh-pages@v4
         with:
-          personal_token: ${{ secrets.STAGING_PAGES_TOKEN }}
+          deploy_key: ${{ secrets.STAGING_DEPLOY_KEY }}
           publish_dir: ./dist
           publish_branch: main
           external_repository: aitherapp/ethos-staging
-          allow_commit_email: true
           user_email: github-actions[bot]@users.noreply.github.com
           user_name: github-actions[bot]

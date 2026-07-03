@@ -226,7 +226,7 @@ Pushing to `main` does not deploy production. Merge or push candidate work to `s
 
 Required GitHub repository setup:
 
-- Create a `staging` environment with `STAGING_PAGES_TOKEN` and optional `STAGING_TURN_URLS`, `STAGING_TURN_USERNAME`, and `STAGING_TURN_CREDENTIAL` secrets.
+- Create a `staging` environment with `STAGING_DEPLOY_KEY` and optional `STAGING_TURN_URLS`, `STAGING_TURN_USERNAME`, and `STAGING_TURN_CREDENTIAL` secrets.
 - Create a `production` environment with `PAGES_TOKEN` and optional `PRODUCTION_TURN_URLS`, `PRODUCTION_TURN_USERNAME`, and `PRODUCTION_TURN_CREDENTIAL` secrets.
 - Protect the `production` environment with required reviewers so production deployments pause for approval before environment secrets are released.
 - Enable GitHub Pages for the external staging repository, expected at `https://aitherapp.github.io/ethos-staging/`.
