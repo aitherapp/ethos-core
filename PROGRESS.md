@@ -1,7 +1,7 @@
 # E T H O S Core - Progress Report
 
 **Date:** 2026-07-03
-**Version:** 3.1.56
+**Version:** 3.1.57
 **Component:** WebRTC Tunnel Establishment (`src/lib/iroh.ts`)
 **Status:** Phase 1 and Phase 2 implemented; Phase 3+ remain on the reliable transport roadmap
 
@@ -18,6 +18,8 @@ Users could not establish secure WebRTC tunnels between peers. The root causes w
 5. **Dead webOfTrust code** — `verifyNIP26Event()` was a no-op (empty Set) but added latency to every incoming signal
 
 This report now covers the current public codebase. For the forward-looking task list, see `docs/plans/2026-06-11-reliable-peer-transport.md`.
+
+Latest staging polish: the right-rail Network Metrics panel now uses real app diagnostics instead of decorative document-sync text, and the mobile hamburger menu has a foregrounded, more opaque dropdown with larger click targets.
 
 ---
 
@@ -181,9 +183,9 @@ npm run build  # Vite production build
 
 ## Cache Invalidation Strategy
 
-1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.56'` triggers fresh install
+1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.57'` triggers fresh install
 2. **localStorage version check** – Detects old version, clears stale data, hard reloads
-3. **Manifest query param** – `manifest.webmanifest?v=3.1.56` bypasses browser cache
+3. **Manifest query param** – `manifest.webmanifest?v=3.1.57` bypasses browser cache
 4. **Vite asset hashes** – Content-based filenames for long-term cache busting
 
 ---

@@ -244,6 +244,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.57 – Real Network Diagnostics (2026-07-03)
+
+- Replaced the decorative Document Sync panel and fake sync speed with real diagnostics: relay count, active peers, selected transport mode, transfers, live relay sockets, reactions, and recent diagnostic entries.
+- Made the mobile hamburger dropdown more solid, foregrounded, wider, and easier to click.
+
 ### v3.1.56 – Secure Relay Mode (2026-07-03)
 
 **Encrypted relay fallback**

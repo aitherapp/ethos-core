@@ -15,7 +15,6 @@ import {
   Smile,
   File as FileIcon,
   Download,
-  RefreshCw,
   Key,
   Users,
   Plus,
@@ -36,6 +35,7 @@ import { isNearScrollBottom } from './lib/chatScroll';
 import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donations';
 import { validateHistoryPassphrase } from './lib/historyLock';
 import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discovery';
+import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.56';
+const APP_VERSION = '3.1.57';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.57',
+    title: 'Real Network Diagnostics',
+    date: '2026-07-03',
+    changes: [
+      'Replaced decorative document-sync copy with real relay, peer, transport, transfer, and diagnostic-log data.',
+      'Improved the mobile hamburger menu surface so links appear in the foreground with larger click targets.',
+    ],
+  },
   {
     version: '3.1.56',
     title: 'Secure Relay Mode',
@@ -939,6 +948,13 @@ export default function App() {
   };
 
   const mobileNavItems = getMobileNavItems(mobilePanel);
+  const networkDiagnostics = buildNetworkDiagnostics({
+    relayCount: relays.length,
+    activePeerCount: peers.length,
+    transferCount: transfers.length,
+    activeTransportLabel: activePeer ? iroh.getPeerTransportStatus(activePeer).label : undefined,
+    recentEntries: diagnosticEntries,
+  });
 
   if (!isInitialized) {
     return (
@@ -986,7 +1002,7 @@ export default function App() {
           <div className="relative md:hidden">
             <button
               onClick={() => setShowMobileMenu(prev => !prev)}
-              className="p-1.5 hover:bg-white/5 rounded transition-colors border border-border/70 bg-bg/40"
+              className="min-h-10 min-w-10 p-2 hover:bg-brand/10 rounded-lg transition-colors border border-border bg-bg shadow-lg"
               aria-expanded={showMobileMenu}
               aria-haspopup="menu"
               aria-label="Open navigation menu"
@@ -997,14 +1013,14 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="absolute right-0 top-9 w-48 rounded-lg border border-border bg-surface-sidebar shadow-2xl shadow-black/40 overflow-hidden"
+                className="fixed right-4 top-12 z-[120] w-60 rounded-xl border border-brand/20 bg-[#10141c] shadow-2xl shadow-black/80 overflow-hidden"
                 role="menu"
               >
                 {mobileNavItems.map(item => (
                   <button
                     key={item.id}
                     onClick={() => handleMobileNavItem(item.id)}
-                    className="w-full px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider hover:bg-brand/10 hover:text-brand transition-colors border-b border-border/60 last:border-b-0"
+                    className="w-full min-h-11 px-4 py-3 text-left text-[11px] uppercase font-bold tracking-wider text-text hover:bg-brand/15 hover:text-brand transition-colors border-b border-border/70 last:border-b-0"
                     role="menuitem"
                   >
                     {item.label}
@@ -1593,15 +1609,15 @@ export default function App() {
                   {identity?.id}
                 </div>
               </div>
-              <div className="p-3 bg-bg/50 rounded border border-border border-dashed">
-                <div className="text-[9px] opacity-30 mb-2 uppercase font-bold">Document Sync</div>
-                <div className="text-[11px] font-bold flex items-center gap-2">
-                  <RefreshCw className="w-3 h-3 text-brand animate-spin" />
-                  REAL_TIME_ORBIT
-                </div>
-                <div className="text-[10px] text-text-secondary mt-1 font-mono leading-tight">
-                  Status: Synchronizing<br/>
-                  ALPN: ethos_hybrid/1
+              <div className="p-3 bg-bg/50 rounded border border-border">
+                <div className="text-[9px] opacity-40 mb-3 uppercase font-bold tracking-widest">Network Diagnostics</div>
+                <div className="space-y-2">
+                  {networkDiagnostics.metrics.map(metric => (
+                    <div key={metric.label} className="flex items-center justify-between gap-3 text-[10px] font-mono">
+                      <span className="opacity-50 uppercase">{metric.label}</span>
+                      <span className="text-brand text-right tabular-nums truncate max-w-[9rem]">{metric.value}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1631,15 +1647,27 @@ export default function App() {
             <div className="p-4 bg-surface-sidebar rounded border border-border relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-full -mr-16 -mt-16 group-hover:bg-brand/10 transition-colors"></div>
               <div className="relative z-10">
-                <h4 className="text-[10px] font-bold uppercase opacity-40 mb-3 tracking-widest">Protocol Metrics</h4>
+                <h4 className="text-[10px] font-bold uppercase opacity-40 mb-3 tracking-widest">Recent Diagnostics</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px] font-mono">
-                    <span className="opacity-50">SYNC_SPEED</span>
-                    <span className="text-brand">64.1 KB/s</span>
+                    <span className="opacity-50">LIVE_RELAYS</span>
+                    <span className="text-brand tabular-nums">{signalMeshCount}</span>
                   </div>
                   <div className="flex justify-between text-[10px] font-mono">
                     <span className="opacity-50">ACTIVE_REACTIONS</span>
                     <span className="text-brand">{messages.reduce((acc: number, m) => acc + (m.reactions ? Object.keys(m.reactions).length : 0), 0)}</span>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    {networkDiagnostics.recentEntries.length === 0 ? (
+                      <div className="text-[10px] text-text-secondary/50 italic">No diagnostics captured yet.</div>
+                    ) : (
+                      networkDiagnostics.recentEntries.map(entry => (
+                        <div key={entry.id} className="rounded bg-black/25 p-2 font-mono text-[9px] leading-snug text-text-secondary">
+                          <div className="mb-1 uppercase text-brand/70">{entry.level}</div>
+                          <div className="line-clamp-2 break-words">{entry.message}</div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
