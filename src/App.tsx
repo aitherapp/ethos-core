@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.57';
+const APP_VERSION = '3.1.58';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.58',
+    title: 'Mobile Panel Polish',
+    date: '2026-07-03',
+    changes: [
+      'Made the mobile Network Diagnostics panel scroll within the phone viewport.',
+      'Removed the duplicate secure transport badge from the chat header and tightened mobile spacing.',
+    ],
+  },
   {
     version: '3.1.57',
     title: 'Real Network Diagnostics',
@@ -1335,24 +1344,18 @@ export default function App() {
             </div>
           ) : (
             <>
-              <header className="h-14 border-b border-border flex items-center justify-between px-6 bg-bg">
-                <div className="flex items-center gap-3">
-                  <h1 className="font-bold text-sm">
+              <header className="h-14 border-b border-border flex items-center justify-between gap-3 px-3 xs:px-6 bg-bg">
+                <div className="flex min-w-0 items-center gap-2 xs:gap-3">
+                  <h1 className="min-w-0 truncate font-bold text-sm">
                     {activeGroup 
                       ? groups.find(g => g.id === activeGroup)?.name 
                       : (activePeer ? (iroh.getPeerName(activePeer) || `Node_${activePeer.slice(0, 4)}`) : '')}
                   </h1>
-                  <span className="px-2 py-0.5 rounded bg-surface-rail text-[9px] text-brand border border-brand/20 font-bold uppercase tracking-widest">
+                  <span className="shrink-0 max-w-[9rem] truncate px-2 py-0.5 rounded bg-surface-rail text-[9px] text-brand border border-brand/20 font-bold uppercase tracking-widest">
                     {activeGroup ? 'Secure group' : activePeer ? iroh.getPeerTransportStatus(activePeer).label : 'Secure chat'}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-[10px] uppercase font-bold">
-                  {activePeer && (
-                    <div className="flex items-center gap-2 px-2 py-0.5 rounded border border-brand/20 bg-brand/10 text-brand transition-all duration-500">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-                      <span>{iroh.getPeerTransportStatus(activePeer).label}</span>
-                    </div>
-                  )}
+                <div className="flex shrink-0 items-center gap-2 xs:gap-4 text-[10px] uppercase font-bold">
                   <div className="w-px h-3 bg-border opacity-20"></div>
                   <span className="flex items-center gap-1 text-brand/80"><Shield className="w-3 h-3" /> QUANTUM_SAFE</span>
                   <div className="w-px h-3 bg-border opacity-20"></div>
@@ -1571,9 +1574,9 @@ export default function App() {
 
         {/* Right Rail: Node Details */}
         <aside className={cn(
-          "w-72 bg-surface-rail border-l border-border p-5 flex flex-col gap-6 overflow-hidden transition-all duration-300 z-30",
+          "w-72 bg-surface-rail border-l border-border p-5 flex flex-col gap-6 overflow-x-hidden overflow-y-auto terminal-scroll overscroll-contain transition-all duration-300 z-30",
           "absolute inset-y-0 right-0 lg:relative lg:translate-x-0 hidden lg:flex",
-          mobilePanel === 'metrics' && "translate-x-0 flex !relative"
+          mobilePanel === 'metrics' && "translate-x-0 flex !relative h-[calc(100dvh-3rem)]"
         )}>
           <section>
             <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-4">Post-Quantum Node</h3>

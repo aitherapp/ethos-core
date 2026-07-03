@@ -244,6 +244,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.58 – Mobile Panel Polish (2026-07-03)
+
+- Made the mobile Network Diagnostics panel scrollable within the phone viewport so bottom content remains reachable.
+- Removed the duplicate secure transport label from the chat header and tightened header spacing for mobile.
+
 ### v3.1.57 – Real Network Diagnostics (2026-07-03)
 
 - Replaced the decorative Document Sync panel and fake sync speed with real diagnostics: relay count, active peers, selected transport mode, transfers, live relay sockets, reactions, and recent diagnostic entries.
