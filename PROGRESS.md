@@ -1,9 +1,9 @@
 # E T H O S Core - Progress Report
 
-**Date:** 2026-04-28
-**Version:** 3.1.3
+**Date:** 2026-07-03
+**Version:** 3.1.55
 **Component:** WebRTC Tunnel Establishment (`src/lib/iroh.ts`)
-**Status:** Fixes Applied, Awaiting Real-World Verification
+**Status:** Phase 1 and Phase 2 implemented; Phase 3+ remain on the reliable transport roadmap
 
 ---
 
@@ -16,6 +16,21 @@ Users could not establish secure WebRTC tunnels between peers. The root causes w
 3. **WebRTC state machine mismanagement** — race conditions in signal delivery and connection registration
 4. **Stale per-peer crypto state** — reconnection left old secrets/ratchets in memory
 5. **Dead webOfTrust code** — `verifyNIP26Event()` was a no-op (empty Set) but added latency to every incoming signal
+
+This report now covers the current public codebase. For the forward-looking task list, see `docs/plans/2026-06-11-reliable-peer-transport.md`.
+
+---
+
+## Current Roadmap Status
+
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| Phase 1: Stabilize Signaling | Implemented | `src/lib/iroh.ts`, `tests/signaling-helpers.test.ts`, `tests/signaling.test.ts` |
+| Phase 2: Add Production TURN Configuration | Implemented | `src/lib/iceServers.ts`, `tests/ice-servers.test.ts`, Settings UI, README ICE/TURN guidance |
+| Phase 3: Add Manual SDP Pairing | Not started | Roadmap-only; no manual offer/answer flow in source |
+| Phase 4: Add Encrypted Nostr Fallback Transport | Partial | Encrypted relay messaging exists, but the separate fallback transport requirements are not complete |
+| Phase 5: Make Status Product-Friendly | Not started | Some UI/status copy is still protocol-heavy |
+| Phase 6: Verify Production Readiness | Not complete | Full manual verification matrix remains open |
 
 ---
 
@@ -112,14 +127,16 @@ Key: Kind 41002 events are regular (non-replaceable). Multiple events with same 
 
 | File | Changes |
 |------|---------|
-| `src/lib/iroh.ts` | Kind 41002, signaling topic routing, trickle re-enable, webOfTrust removal, state cleanup |
-| `src/App.tsx` | APP_VERSION bumps |
+| `src/lib/iroh.ts` | Kind 41002, signaling topic routing, trickle re-enable, webOfTrust removal, state cleanup, ICE/TURN usage |
+| `src/lib/iceServers.ts` | User ICE/TURN parsing, persistence, hosted defaults, presets, and ICE candidate testing |
+| `src/App.tsx` | APP_VERSION bumps, ICE/TURN Settings UI |
 | `public/sw.js` | Cache name bumps |
 | `index.html` | Manifest query param bumps |
 | `package.json` | Version bumps |
 | `tests/signaling.test.ts` | Kind 41002 assertions, relay tests skipped (need browser) |
 | `tests/signaling-structure.test.ts` | Kind range verification tests |
-| `README.md` | Changelog entries for v3.1.0–v3.1.3 |
+| `tests/ice-servers.test.ts` | ICE/TURN server parsing, priority, persistence, and candidate summary tests |
+| `README.md` | Changelog entries, ICE/TURN guidance, and release-flow documentation |
 | `PROGRESS.md` | This file |
 
 ---
@@ -139,6 +156,10 @@ Tests verify:
 - Signal encryption/decryption roundtrip
 - Multi-event preservation on same topic with kind 41002
 - Full connection flow: offer → answer → candidate
+- ICE/TURN URL parsing and validation
+- User ICE/TURN server priority before hosted/default servers
+- Local persistence under `nexus_ice_servers`
+- Relay candidate reporting for the ICE test UI
 
 ### Build
 
@@ -160,9 +181,9 @@ npm run build  # Vite production build
 
 ## Cache Invalidation Strategy
 
-1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.3'` triggers fresh install
+1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.55'` triggers fresh install
 2. **localStorage version check** – Detects old version, clears stale data, hard reloads
-3. **Manifest query param** – `manifest.webmanifest?v=2.0` bypasses browser cache
+3. **Manifest query param** – `manifest.webmanifest?v=3.1.55` bypasses browser cache
 4. **Vite asset hashes** – Content-based filenames for long-term cache busting
 
 ---
@@ -170,6 +191,9 @@ npm run build  # Vite production build
 ## Known Limitations
 
 - Pkarr DHT discovery is best-effort (CORS may block from GitHub Pages)
-- No TURN servers configured (STUN only — may fail behind symmetric NAT)
+- Hosted TURN defaults are optional and must be injected at build time with `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL`.
+- Users can configure TURN in Settings; the bundled demo TURN fallback remains best-effort and is not production-grade.
 - Relay integration tests skipped in Node.js (need browser WebSocket)
 - No UI for managing relay list persistence across sessions
+- Manual SDP pairing is not implemented yet.
+- Product-friendly transport status labels are still pending.

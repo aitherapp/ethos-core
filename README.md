@@ -210,9 +210,28 @@ Open http://localhost:3000 to use the local development app.
 npm run lint
 npm test
 npm run build
+npm run build:release
 ```
 
 For ICE/TURN setup in the running app, see [ICE / TURN Configuration](#ice--turn-configuration).
+
+### Release Flow
+
+ETHOS uses two GitHub Pages targets:
+
+- **Staging:** pushes to the source `staging` branch, or manual runs of the staging workflow, deploy to `aitherapp/ethos-staging`.
+- **Production:** version tags matching `v*`, or manual runs of the production workflow, deploy to `aitherapp/ethos`.
+
+Pushing to `main` does not deploy production. Merge or push candidate work to `staging` first, test the staging Pages build, then promote a reviewed build with a version tag or a manual production workflow dispatch.
+
+Required GitHub repository setup:
+
+- Create a `staging` environment with `STAGING_PAGES_TOKEN` and optional `STAGING_TURN_URLS`, `STAGING_TURN_USERNAME`, and `STAGING_TURN_CREDENTIAL` secrets.
+- Create a `production` environment with `PAGES_TOKEN` and optional `PRODUCTION_TURN_URLS`, `PRODUCTION_TURN_USERNAME`, and `PRODUCTION_TURN_CREDENTIAL` secrets.
+- Protect the `production` environment with required reviewers so production deployments pause for approval before environment secrets are released.
+- Enable GitHub Pages for the external staging repository, expected at `https://aitherapp.github.io/ethos-staging/`.
+
+Staging builds intentionally use `npm run build` and do not create release receipts or GitHub artifact attestations. Production builds use `npm run build:release`, record release manifests, and verify artifact attestations before publishing.
 
 ### Tech Stack
 
@@ -224,6 +243,17 @@ For ICE/TURN setup in the running app, see [ICE / TURN Configuration](#ice--turn
 - WebRTC data channels
 
 ## Changelog
+
+### v3.1.55 – Staging Release Flow (2026-07-03)
+
+**Release workflow**
+- Added a separate GitHub Pages staging deployment target for testing builds before production.
+- Changed production deployment so `main` pushes no longer publish directly to users.
+- Documented the staging-first release flow, required GitHub environments, and deployment secrets.
+
+**Transport roadmap**
+- Updated the reliable transport roadmap and progress notes to show Phase 1 and Phase 2 completion.
+- Clarified that manual SDP pairing, encrypted fallback completion, product-friendly status, and final production verification remain open.
 
 ### v3.1.54 – Public Source Trust Copy (2026-07-02)
 

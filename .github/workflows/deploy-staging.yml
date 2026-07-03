@@ -1,0 +1,63 @@
+name: Deploy staging Pages repo
+
+on:
+  push:
+    branches: ["staging"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://aitherapp.github.io/ethos-staging/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build staging
+        env:
+          VITE_TURN_URLS: ${{ secrets.STAGING_TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ secrets.STAGING_TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.STAGING_TURN_CREDENTIAL }}
+        run: npm run build
+
+      - name: Upload staging artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ethos-staging-dist
+          path: ./dist
+          if-no-files-found: error
+
+      - name: Deploy to staging repository
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.STAGING_PAGES_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: main
+          external_repository: aitherapp/ethos-staging
+          allow_commit_email: true
+          user_email: github-actions[bot]@users.noreply.github.com
+          user_name: github-actions[bot]

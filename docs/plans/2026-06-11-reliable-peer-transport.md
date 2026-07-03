@@ -12,6 +12,14 @@ Adding a peer should create a secure messaging session for ordinary users. Users
 
 The preferred production path is WebRTC over user-managed, production-grade TURN. This is the path for direct chat, files, audio, and video. Nostr remains the signaling mesh and becomes an encrypted resilience layer for text and small file chunks when direct WebRTC cannot connect.
 
+## Current Status
+
+- Phase 1 is implemented in the current codebase, with signaling session IDs, duplicate suppression, stale-session filtering, bounded pending signals, and focused tests.
+- Phase 2 is implemented in the current codebase, with configurable ICE/TURN settings, local persistence, hosted deployment defaults, provider presets, candidate testing, and README guidance.
+- Phase 3 is the next unstarted phase.
+- Phase 4 is partially present through encrypted relay messaging, but it still needs to be completed against the separate fallback transport requirements below.
+- Phase 5 and Phase 6 remain open.
+
 ## Non-Negotiable Security Invariants
 
 No plaintext fallback is allowed.
@@ -56,13 +64,13 @@ flowchart LR
 - Modify: `src/lib/iroh.ts`
 - Add or update focused tests under `tests/`
 
-- [ ] Add `sessionId` as a Nostr event tag in addition to encrypted payload content.
-- [ ] Filter incoming signaling events by active `sessionId` whenever possible.
-- [ ] Add a bounded `processedEventIds` cache keyed by Nostr event ID.
-- [ ] Queue ICE candidates until `remoteDescription` is set.
-- [ ] Flush queued candidates immediately after remote SDP is set.
-- [ ] Drop stale answers/candidates instead of re-queueing them after stable-state errors.
-- [ ] Add tests for duplicate events, stale sessions, candidate-before-SDP ordering, and stable-state answer drops.
+- [x] Add `sessionId` as a Nostr event tag in addition to encrypted payload content.
+- [x] Filter incoming signaling events by active `sessionId` whenever possible.
+- [x] Add a bounded `processedEventIds` cache keyed by Nostr event ID.
+- [x] Queue ICE candidates until `remoteDescription` is set.
+- [x] Flush queued candidates immediately after remote SDP is set.
+- [x] Drop stale answers/candidates instead of re-queueing them after stable-state errors.
+- [x] Add tests for duplicate events, stale sessions, candidate-before-SDP ordering, and stable-state answer drops.
 
 **Acceptance criteria:**
 - Duplicate Nostr events are ignored.
@@ -74,15 +82,19 @@ flowchart LR
 **Files:**
 - Modify: `src/lib/iroh.ts`
 - Modify: `src/App.tsx`
+- Add: `src/lib/iceServers.ts`
+- Add: `tests/ice-servers.test.ts`
+- Update: `README.md`
+- Update: `.env.example`
 
-- [ ] Add an ICE server settings section for STUN/TURN entries.
-- [ ] Support `urls`, optional `username`, and optional `credential`.
-- [ ] Persist user configuration in `localStorage` as `nexus_ice_servers`.
-- [ ] Use user-provided ICE servers before bundled defaults.
-- [ ] Keep hosted defaults via `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL`.
-- [ ] Add guided presets for Metered.ca, Twilio Network Traversal, Xirsys, and custom/self-hosted coturn.
-- [ ] Add a "test ICE config" action that gathers candidates and reports whether a `relay` candidate appeared.
-- [ ] Mark bundled/free TURN defaults as demo or best-effort only.
+- [x] Add an ICE server settings section for STUN/TURN entries.
+- [x] Support `urls`, optional `username`, and optional `credential`.
+- [x] Persist user configuration in `localStorage` as `nexus_ice_servers`.
+- [x] Use user-provided ICE servers before bundled defaults.
+- [x] Keep hosted defaults via `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL`.
+- [x] Add guided presets for Metered.ca, Twilio Network Traversal, Xirsys, and custom/self-hosted coturn.
+- [x] Add a "test ICE config" action that gathers candidates and reports whether a `relay` candidate appeared.
+- [x] Mark bundled/free TURN defaults as demo or best-effort only.
 
 **Security requirements:**
 - Do not log TURN credentials.

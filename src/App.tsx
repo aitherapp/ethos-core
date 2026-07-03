@@ -75,9 +75,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.54';
+const APP_VERSION = '3.1.55';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.55',
+    title: 'Staging Release Flow',
+    date: '2026-07-03',
+    changes: [
+      'Added a separate staging deployment path so new builds can be tested before production promotion.',
+      'Changed production deployment to run only from explicit release promotion instead of every main branch push.',
+      'Updated the reliable transport roadmap to reflect completed Phase 1 and Phase 2 work.',
+    ],
+  },
   {
     version: '3.1.54',
     title: 'Public Source Trust Copy',

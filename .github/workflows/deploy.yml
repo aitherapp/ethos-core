@@ -3,7 +3,8 @@ name: Deploy to public Pages repo
 
 on:
   push:
-    branches: ["main"]
+    tags:
+      - 'v*'
 
   workflow_dispatch:
 
@@ -12,13 +13,18 @@ permissions:
   id-token: write
   attestations: write
 
+concurrency:
+  group: production-pages
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://aitherapp.github.io/ethos/
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAGES_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,6 +42,10 @@ jobs:
         run: npm test
 
       - name: Build release
+        env:
+          VITE_TURN_URLS: ${{ secrets.PRODUCTION_TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ secrets.PRODUCTION_TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.PRODUCTION_TURN_CREDENTIAL }}
         run: npm run build:release
 
       - name: Upload release artifact
