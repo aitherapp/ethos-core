@@ -244,6 +244,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.61 – Canary Refresh & Release Sync (2026-07-07)
+
+- Updated the public warrant canary to the current weekly statement date.
+- Merged latest staging features into the main production branch and bumped version for cache busting.
+
 ### v3.1.60 – Mobile Menu Tap Fix (2026-07-03)
 
 - Keeps the hamburger dropdown above the mobile panel overlay so links remain tappable while Network / Metrics is open.

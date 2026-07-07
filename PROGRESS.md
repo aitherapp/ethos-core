@@ -1,7 +1,7 @@
 # E T H O S Core - Progress Report
 
-**Date:** 2026-07-03
-**Version:** 3.1.60
+**Date:** 2026-07-07
+**Version:** 3.1.61
 **Component:** WebRTC Tunnel Establishment (`src/lib/iroh.ts`)
 **Status:** Phase 1 and Phase 2 implemented; Phase 3+ remain on the reliable transport roadmap
 
@@ -183,9 +183,9 @@ npm run build  # Vite production build
 
 ## Cache Invalidation Strategy
 
-1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.60'` triggers fresh install
+1. **Service Worker** – `CACHE_NAME = 'ethos-v3.1.61'` triggers fresh install
 2. **localStorage version check** – Detects old version, clears stale data, hard reloads
-3. **Manifest query param** – `manifest.webmanifest?v=3.1.60` bypasses browser cache
+3. **Manifest query param** – `manifest.webmanifest?v=3.1.61` bypasses browser cache
 4. **Vite asset hashes** – Content-based filenames for long-term cache busting
 
 ---
