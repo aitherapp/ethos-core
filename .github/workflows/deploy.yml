@@ -83,7 +83,7 @@ jobs:
       - name: Deploy to external repository
         uses: peaceiris/actions-gh-pages@v4
         with:
-          personal_token: ${{ secrets.PAGES_TOKEN }}
+          deploy_key: ${{ secrets.PRODUCTION_DEPLOY_KEY }}
           publish_dir: ./dist
           publish_branch: main
           external_repository: aitherapp/ethos
