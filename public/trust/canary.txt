@@ -1,7 +1,7 @@
 ETHOS Warrant Canary
 
-Statement date: 2026-07-07
-Expected next update: 2026-07-14
+Statement date: 2026-07-16
+Expected next update: 2026-07-23
 Update cadence: Weekly
 
 As of 2026-07-07, ETHOS has not been compelled by any government,
