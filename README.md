@@ -244,6 +244,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.62 – Canary Update (2026-07-16)
+
+- Updated the public warrant canary to the current weekly statement date.
+- Updated canary expiry date to 2026-07-23.
+
 ### v3.1.61 – Canary Refresh & Release Sync (2026-07-07)
 
 - Updated the public warrant canary to the current weekly statement date.
