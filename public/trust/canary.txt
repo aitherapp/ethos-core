@@ -4,7 +4,7 @@ Statement date: 2026-07-16
 Expected next update: 2026-07-23
 Update cadence: Weekly
 
-As of 2026-07-07, ETHOS has not been compelled by any government,
+ETHOS has not been compelled by any government,
 court, agency, or other authority to:
 
 - Add or preserve a backdoor in ETHOS.
