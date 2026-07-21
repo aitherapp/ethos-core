@@ -75,7 +75,7 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.64';
+const APP_VERSION = '3.1.65';
 
 const ABOUT_CHANGELOG = [
   {

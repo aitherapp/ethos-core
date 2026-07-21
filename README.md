@@ -244,6 +244,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.65 – Keyboard-Safe Mobile Input Bar (2026-07-21)
+- Pin the footer to the viewport bottom when the iOS keyboard opens.
+- Add keyboard-safe bottom padding in the chat area so messages are never hidden behind the input bar.
+
 ### v3.1.64 – Mobile Input Bar Fix (2026-07-21)
 
 - Updated the public warrant canary to the current weekly statement date.
