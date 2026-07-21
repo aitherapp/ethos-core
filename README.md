@@ -244,7 +244,7 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
-### v3.1.63 – Canary Update (2026-07-19)
+### v3.1.64 – Mobile Input Bar Fix (2026-07-21)
 
 - Updated the public warrant canary to the current weekly statement date.
 - Updated canary expiry date to 2026-07-26.

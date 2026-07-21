@@ -75,17 +75,16 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.63';
+const APP_VERSION = '3.1.64';
 
 const ABOUT_CHANGELOG = [
   {
-    version: '3.1.63',
-    title: 'Canary Update',
-    date: '2026-07-19',
+    version: '3.1.64',
+    title: 'Mobile Input Bar Fix',
+    date: '2026-07-21',
     changes: [
-      'Updated the public warrant canary to the current weekly statement date.',
-      'Updated canary expiry date to 2026-07-26.',
-      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+      'Keeps the send button fully visible inside the mobile viewport so it no longer overflows the right edge.',
+      'Accounts for the mobile safe area and viewport chrome while typing, so the input bar stays reachable.',
     ],
   },
   {
@@ -1026,7 +1025,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg text-text-primary overflow-hidden font-sans">
+    <div className={cn("flex flex-col bg-bg text-text-primary overflow-hidden font-sans h-[100dvh] max-h-none sm:h-screen")}>
       <input 
         type="file" 
         className="hidden" 
@@ -1568,19 +1567,19 @@ export default function App() {
               </div>
 
               {/* Input Bar */}
-              <footer className="p-4 bg-surface-sidebar border-t border-border">
-                <div className="relative flex items-center bg-bg border border-border rounded-lg px-3 xs:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner">
+              <footer className="p-4 bg-surface-sidebar border-t border-border pb-[env(safe-area-inset-bottom)]">
+                <div className="relative flex items-center bg-bg border border-border rounded-lg px-3 xs:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner w-full overflow-hidden">
                   <button 
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!!activeGroup}
-                    className="text-text-secondary hover:text-white mr-2 xs:mr-3 transition-colors group disabled:opacity-20"
+                    className="text-text-secondary hover:text-white mr-2 xs:mr-3 transition-colors group disabled:opacity-20 shrink-0"
                   >
                     <Paperclip className="w-5 h-5 group-hover:text-brand" />
                   </button>
                   <input 
                     type="text" 
                     placeholder={activeGroup ? "Message Group..." : "Message Peer..."} 
-                    className="bg-transparent flex-1 outline-none text-xs xs:text-sm placeholder-gray-700 font-mono w-0"
+                    className="bg-transparent flex-1 outline-none text-xs xs:text-sm placeholder-gray-700 font-mono w-0 min-w-0"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
@@ -1589,7 +1588,7 @@ export default function App() {
                       }
                     }}
                   />
-                  <div className="flex items-center gap-1.5 xs:gap-3">
+                  <div className="flex items-center gap-1.5 xs:gap-3 shrink-0">
                     <button 
                       onClick={() => setIsEphemeral(!isEphemeral)}
                       title={isEphemeral ? "Disable Ephemeral (Standard Only)" : "Enable Ephemeral (Burn after 1m)"}
@@ -1608,7 +1607,7 @@ export default function App() {
                       onClick={handleSendMessage}
                       disabled={!inputText.trim() || isSending}
                       className={cn(
-                        "bg-brand text-black w-7 h-7 xs:w-8 xs:h-8 rounded flex items-center justify-center transition-all shadow-[0_0_10px_rgba(0,255,65,0.4)]",
+                        "bg-brand text-black w-7 h-7 xs:w-8 xs:h-8 rounded flex items-center justify-center transition-all shadow-[0_0_10px_rgba(0,255,65,0.4)] shrink-0",
                         inputText.trim() && !isSending ? "hover:opacity-90 active:scale-95 group" : "opacity-30 cursor-not-allowed"
                       )}
                     >
