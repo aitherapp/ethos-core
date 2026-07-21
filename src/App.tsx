@@ -1433,7 +1433,7 @@ export default function App() {
                     scrollHeight: element.scrollHeight,
                   });
                 }}
-                className="flex-1 p-6 space-y-6 overflow-y-auto terminal-scroll scroll-smooth"
+                className="flex-1 p-6 pb-[calc(4rem+env(safe-area-inset-bottom))] space-y-6 overflow-y-auto terminal-scroll scroll-smooth"
               >
                 {messages.filter(m => {
                   if (activeGroup) return m.groupId === activeGroup;
@@ -1567,8 +1567,8 @@ export default function App() {
               </div>
 
               {/* Input Bar */}
-              <footer className="p-4 bg-surface-sidebar border-t border-border pb-[env(safe-area-inset-bottom)]">
-                <div className="relative flex items-center bg-bg border border-border rounded-lg px-3 xs:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner w-full overflow-hidden">
+              <footer className="fixed bottom-0 left-0 right-0 z-30 bg-surface-sidebar border-t border-border pb-[env(safe-area-inset-bottom)]">
+                <div className="relative flex items-center bg-bg border border-border rounded-none xs:rounded-lg px-3 xs:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner w-full max-w-2xl mx-auto overflow-hidden">
                   <button 
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!!activeGroup}
