@@ -244,15 +244,18 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.66 – Canary Update (2026-07-27)
+- Updated the public warrant canary to the current weekly statement date.
+- Updated canary expiry date to 2026-08-03.
+- Bumped the app and service-worker cache version so browsers fetch the refreshed canary.
+
 ### v3.1.65 – Keyboard-Safe Mobile Input Bar (2026-07-21)
 - Pin the footer to the viewport bottom when the iOS keyboard opens.
 - Add keyboard-safe bottom padding in the chat area so messages are never hidden behind the input bar.
 
 ### v3.1.64 – Mobile Input Bar Fix (2026-07-21)
-
-- Updated the public warrant canary to the current weekly statement date.
-- Updated canary expiry date to 2026-07-26.
-- Bumped the app and service-worker cache version so browsers fetch the refreshed canary.
+- Keeps the send button fully visible inside the mobile viewport so it no longer overflows the right edge.
+- Accounts for the mobile safe area and viewport chrome while typing, so the input bar stays reachable.
 
 ### v3.1.62 – Canary Update (2026-07-16)
 

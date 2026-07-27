@@ -75,9 +75,28 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.65';
+const APP_VERSION = '3.1.66';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.66',
+    title: 'Canary Update',
+    date: '2026-07-27',
+    changes: [
+      'Updated the public warrant canary to the current weekly statement date.',
+      'Updated canary expiry date to 2026-08-03.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+    ],
+  },
+  {
+    version: '3.1.65',
+    title: 'Keyboard-Safe Mobile Input Bar',
+    date: '2026-07-21',
+    changes: [
+      'Pin the footer to the viewport bottom when the iOS keyboard opens.',
+      'Add keyboard-safe bottom padding in the chat area so messages are never hidden behind the input bar.',
+    ],
+  },
   {
     version: '3.1.64',
     title: 'Mobile Input Bar Fix',
