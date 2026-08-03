@@ -75,9 +75,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.67';
+const APP_VERSION = '3.1.68';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.68',
+    title: 'Canary Update',
+    date: '2026-08-03',
+    changes: [
+      'Updated the public warrant canary to the current weekly statement date.',
+      'Updated canary expiry date to 2026-08-10.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+    ],
+  },
   {
     version: '3.1.67',
     title: 'Security: PostCSS Path Traversal Fix',

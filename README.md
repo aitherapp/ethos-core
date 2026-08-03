@@ -244,6 +244,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 
 ## Changelog
 
+### v3.1.68 – Canary Update (2026-08-03)
+- Updated the public warrant canary to the current weekly statement date.
+- Updated canary expiry date to 2026-08-10.
+- Bumped the app and service-worker cache version so browsers fetch the refreshed canary.
+
 ### v3.1.67 – Security: PostCSS Path Traversal Fix (2026-07-27)
 - Pin transitive `postcss` to `8.5.18` to close the `sourceMappingURL` path-traversal issue.
 - Keep weekly canary dates fresh and cache-busting aligned.
