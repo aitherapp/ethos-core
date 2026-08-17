@@ -83,8 +83,7 @@ const ABOUT_CHANGELOG = [
     title: 'Weekly Canary Update',
     date: '2026-08-17',
     changes: [
-      'Updated the weekly warrant canary statement and expected next update date.',
-      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+      'Updated the weekly canary statement and refreshed app cache.',
     ],
   },
   {
