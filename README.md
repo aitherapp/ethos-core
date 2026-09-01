@@ -243,6 +243,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.73 – Weekly Canary Update (2026-09-01)
+- Updated the weekly canary statement.
+- Refreshed app cache to prevent stale builds.
+### v3.1.72 – Weekly Canary Update (2026-08-25)
+- Updated the weekly canary statement.
+- Refreshed app cache to prevent stale builds.
 ### v3.1.71 – Weekly Canary Update (2026-08-17)
 - Updated the weekly warrant canary statement and expected next update date.
 - Bumped the app and service-worker cache version so browsers fetch the refreshed canary.
