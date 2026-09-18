@@ -287,6 +287,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.86 – iOS PWA Safe Area Fix (2026-09-18)
+- Updated iOS PWA status bar style and top navigation padding so search icon and mobile menu sit cleanly below the iPhone clock/status bar.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.85 – OS Push Testing & Documentation Update (2026-09-18)
 - Added `Test Push` button under Settings -> Node Configuration to verify browser and OS notification settings.
 - Documented Serverless OS Web Push (VAPID) section in README.

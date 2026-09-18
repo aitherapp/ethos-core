@@ -78,9 +78,17 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.85';
+const APP_VERSION = '3.1.86';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.86',
+    title: 'iOS PWA Safe-Area Status Bar Fix',
+    date: '2026-09-18',
+    changes: [
+      'Updated iOS PWA status bar style to default and added safe-area padding to prevent status bar overlap on iPhone.',
+    ],
+  },
   {
     version: '3.1.85',
     title: 'OS Push Testing & Documentation Update',
@@ -1221,11 +1229,14 @@ export default function App() {
         onChange={handleFileShare}
       />
       {/* Top Navigation / Title Bar */}
-      <nav className={cn(
-        "relative h-12 bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20",
-        showMobileMenu && "z-[130]"
-      )}>
-        <div className="flex items-center gap-3">
+      <nav 
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        className={cn(
+          "relative bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20",
+          showMobileMenu && "z-[130]"
+        )}
+      >
+        <div className="flex items-center gap-3 h-12">
           <button 
             onClick={() => {
               setShowMobileMenu(false);
@@ -1257,7 +1268,7 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="fixed right-4 top-12 z-[120] w-60 rounded-xl border border-brand/20 bg-[#10141c] shadow-2xl shadow-black/80 overflow-hidden"
+                className="fixed right-4 top-[calc(3.25rem+env(safe-area-inset-top))] z-[120] w-60 rounded-xl border border-brand/20 bg-[#10141c] shadow-2xl shadow-black/80 overflow-hidden"
                 role="menu"
               >
                 {mobileNavItems.map(item => (
