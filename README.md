@@ -279,6 +279,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.80 – Widget E2EE Signaling & Relay Throttling (2026-09-18)
+- Connected `widget.js` directly to `iroh` signaling to enable two-way E2EE messaging between widget visitors and site owners.
+- Throttled WebRTC candidate bursts in Nostr signaling to prevent Nostr relay rate-limiting/banning.
+- Preserved optional Pkarr DHT toggle under Settings for nickname searching.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.79 – Pkarr Toggle & Privacy Fixes (2026-09-18)
 - Added settings toggle for Pkarr DHT peer discovery (disabled by default) to keep ETHOS 100% serverless and eliminate external proxy dependencies.
 - Refreshed app and service-worker cache versions.

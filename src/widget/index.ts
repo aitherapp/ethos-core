@@ -1,7 +1,9 @@
-import { parseWidgetConfig, generateVisitorId } from './widgetCore';
+import { iroh } from '../lib/iroh';
+import { parseWidgetConfig, generateVisitorId, createWidgetPayload } from './widgetCore';
 import { createWidgetDOM } from './widgetUI';
+import { SecureMessage } from '../types';
 
-(function initEthosWidget() {
+(async function initEthosWidget() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
   // Find the executing script tag
@@ -26,11 +28,35 @@ import { createWidgetDOM } from './widgetUI';
 
     const ui = createWidgetDOM(config);
 
+    // Initialize iroh for visitor node
+    await iroh.initialize(visitorId);
+    
+    // Connect to site owner's ETHOS ticket
+    const ownerTicket = config.ownerTicket;
+    await iroh.connectByTicket(ownerTicket);
+
+    let isInitialMessage = true;
+
+    // Listen for replies from site owner
+    iroh.onMessage((msg: SecureMessage) => {
+      if (msg.senderId === ownerTicket || msg.receiverId === visitorId) {
+        const replyText = msg.content;
+        if (replyText) {
+          const msgEl = document.createElement('div');
+          msgEl.className = 'ethos-msg owner';
+          msgEl.textContent = replyText;
+          ui.messageLog.appendChild(msgEl);
+          ui.messageLog.scrollTop = ui.messageLog.scrollHeight;
+        }
+      }
+    });
+
     // Send button event handler
-    const handleSend = () => {
+    const handleSend = async () => {
       const text = ui.inputField.value.trim();
       if (!text) return;
 
+      // Render locally
       const msgEl = document.createElement('div');
       msgEl.className = 'ethos-msg visitor';
       msgEl.textContent = text;
@@ -38,6 +64,20 @@ import { createWidgetDOM } from './widgetUI';
       ui.messageLog.scrollTop = ui.messageLog.scrollHeight;
 
       ui.inputField.value = '';
+
+      // Send payload over ETHOS / Nostr
+      if (isInitialMessage) {
+        const payload = createWidgetPayload(
+          visitorId,
+          window.location.pathname || '/',
+          document.referrer || '',
+          text
+        );
+        await iroh.sendMessage(ownerTicket, JSON.stringify(payload));
+        isInitialMessage = false;
+      } else {
+        await iroh.sendMessage(ownerTicket, text);
+      }
     };
 
     ui.sendButton.addEventListener('click', handleSend);

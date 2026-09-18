@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.79';
+const APP_VERSION = '3.1.80';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.80',
+    title: 'Widget Signaling & Relay Throttling Fixes',
+    date: '2026-09-18',
+    changes: [
+      'Connected widget.js script to ETHOS Nostr signaling so visitor messages and owner replies transmit E2EE.',
+      'Added ICE candidate throttling in Nostr signaling to eliminate rate-limit bans from Nostr relays.',
+    ],
+  },
   {
     version: '3.1.79',
     title: 'Pkarr Toggle & Privacy Fixes',

@@ -1221,6 +1221,34 @@ export class IrohManager {
     return true;
   }
 
+  private candidateQueues = new Map<string, Array<any>>();
+  private candidateTimers = new Map<string, any>();
+
+  private sendCandidateThrottled(topicId: string, payload: any) {
+    if (!this.candidateQueues.has(topicId)) {
+      this.candidateQueues.set(topicId, []);
+    }
+    this.candidateQueues.get(topicId)!.push(payload);
+
+    if (!this.candidateTimers.has(topicId)) {
+      const processQueue = () => {
+        const queue = this.candidateQueues.get(topicId);
+        if (!queue || queue.length === 0) {
+          this.candidateTimers.delete(topicId);
+          return;
+        }
+        const item = queue.shift();
+        this.sendNostrSignal(topicId, item);
+        if (queue.length > 0) {
+          this.candidateTimers.set(topicId, setTimeout(processQueue, 200));
+        } else {
+          this.candidateTimers.delete(topicId);
+        }
+      };
+      this.candidateTimers.set(topicId, setTimeout(processQueue, 20));
+    }
+  }
+
   private setupSimplePeer(peer: any, peerId: string, topicId: string, isInitiator = false) {
     this.attachIceRetry(peer, peerId, isInitiator);
 
@@ -1231,12 +1259,18 @@ export class IrohManager {
       else if (data.candidate) signalType = 'candidate';
       
       console.debug(`[Nostr] WebRTC signal: type=${signalType}, topic=${topicId.slice(0,8)}`);
-      this.sendNostrSignal(topicId, {
+      const signalPayload = {
         senderId: this.currentPeerId,
         type: signalType,
         sessionId: this.signalSessions.get(peerId),
         sdp: data
-      });
+      };
+
+      if (signalType === 'candidate') {
+        this.sendCandidateThrottled(topicId, signalPayload);
+      } else {
+        this.sendNostrSignal(topicId, signalPayload);
+      }
 
       if (signalType === 'offer') {
         this.flushPendingSignals(peer, peerId);

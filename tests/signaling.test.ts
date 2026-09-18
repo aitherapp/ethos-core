@@ -342,4 +342,24 @@ describe.skip('Nostr Relay Integration', () => {
 
     pool.close(RELAYS);
   }, 20000);
+
+  it('should space out candidates over time when throttled', async () => {
+    const queue: number[] = [];
+    const timestamps: number[] = [];
+
+    function processCandidates(items: number[]) {
+      items.forEach((item, index) => {
+        setTimeout(() => {
+          timestamps.push(Date.now());
+          queue.push(item);
+        }, index * 200);
+      });
+    }
+
+    processCandidates([1, 2, 3]);
+    await new Promise(r => setTimeout(r, 650));
+
+    expect(queue.length).toBe(3);
+    expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(150);
+  });
 });
