@@ -279,6 +279,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.78 – CORS & PWA Meta Fixes (2026-09-18)
+- Added `<meta name="mobile-web-app-capable" content="yes">` to fix browser deprecation warning.
+- Fixed Pkarr DHT CORS errors by routing requests through proxy.
+- Replaced unreliable Nostr relay `wss://relay.damus.io` with `wss://relay.nostr.band`.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.77 – Embeddable Chat Widget & Local Notifications (2026-09-18)
 - Introduced embeddable `widget.js` script for embedding ETHOS live chat on external websites with Shadow DOM style isolation.
 - Added serverless Web Notifications API integration for background visitor message alerts.

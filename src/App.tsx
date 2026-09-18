@@ -75,9 +75,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.77';
+const APP_VERSION = '3.1.78';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.78',
+    title: 'CORS & PWA Meta Fixes',
+    date: '2026-09-18',
+    changes: [
+      'Added mobile-web-app-capable meta tag to prevent browser deprecation warnings.',
+      'Rerouted Pkarr DHT requests through CORS proxy to eliminate console CORS errors.',
+      'Replaced unstable Nostr relay damus.io with nostr.band.',
+    ],
+  },
   {
     version: '3.1.77',
     title: 'Embeddable Chat Widget & Local Notifications',

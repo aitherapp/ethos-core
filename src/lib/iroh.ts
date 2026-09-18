@@ -29,8 +29,8 @@ const MAX_ACTIVE_INBOUND_TRANSFERS_PER_PEER = 3;
 const INBOUND_TRANSFER_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_NOSTR_RELAYS = [
   'wss://nos.lol',
-  'wss://relay.damus.io',
   'wss://relay.primal.net',
+  'wss://relay.nostr.band',
   'wss://offchain.pub',
   'wss://nostr.mom'
 ];
@@ -1481,10 +1481,11 @@ export class IrohManager {
        let successCount = 0;
        for (const relayUrl of PKARR_RELAYS) {
          try {
-           const res = await fetch(`${relayUrl}/${z32.encode(publicKey)}`, {
+           const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
+           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+           const res = await fetch(proxyUrl, {
              method: 'PUT',
              body: bytes,
-             mode: 'cors',
              headers: { 'Content-Type': 'application/octet-stream' }
            });
            if (res.ok || res.status === 204) {
@@ -1591,14 +1592,13 @@ export class IrohManager {
        
        for (const relayUrl of PKARR_RELAYS) {
          try {
-           // Direct fetch – CORS errors caught and ignored (best-effort discovery)
+           const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
+           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
            const controller = new AbortController();
            const timeout = setTimeout(() => controller.abort(), 5000);
            
-           const response = await fetch(`${relayUrl}/${z32.encode(publicKey)}`, {
+           const response = await fetch(proxyUrl, {
              method: 'GET',
-             mode: 'cors',
-             credentials: 'omit',
              signal: controller.signal
            });
            
