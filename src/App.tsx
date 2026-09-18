@@ -75,9 +75,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.76';
+const APP_VERSION = '3.1.77';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.77',
+    title: 'Embeddable Chat Widget & Local Notifications',
+    date: '2026-09-18',
+    changes: [
+      'Added embeddable ETHOS live chat widget (dist/widget.js) for websites with Intercom-style floating launcher.',
+      'Added serverless local notifications for background website visitor messages.',
+    ],
+  },
   {
     version: '3.1.76',
     title: 'Security Update (Vitest)',

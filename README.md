@@ -243,6 +243,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.77 – Embeddable Chat Widget & Local Notifications (2026-09-18)
+- Introduced embeddable `widget.js` script for embedding ETHOS live chat on external websites with Shadow DOM style isolation.
+- Added serverless Web Notifications API integration for background visitor message alerts.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.76 – Security Update (Vitest) (2026-09-18)
 - Updated Vitest to v4.1.11 to patch GHSA-82fw-gwwq-j7x9 path traversal vulnerability.
 - Refreshed app and service-worker cache versions.
