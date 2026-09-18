@@ -2,7 +2,8 @@ export async function sendDirectWebPush(
   pushEndpoint: string | null,
   visitorId: string,
   pagePath: string,
-  messageText: string
+  messageText: string,
+  fetchFn: typeof fetch = fetch
 ): Promise<boolean> {
   if (!pushEndpoint) return false;
 
@@ -12,7 +13,7 @@ export async function sendDirectWebPush(
       body: `[${pagePath}] ${messageText.slice(0, 100)}`,
     });
 
-    const res = await fetch(pushEndpoint, {
+    const res = await fetchFn(pushEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
