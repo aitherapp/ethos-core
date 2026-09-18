@@ -279,6 +279,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.83 – Web Notifications Permission Prompt Fix (2026-09-18)
+- Prompted browser notification permissions on app mount so background visitor alerts display reliably.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.82 – Widget Visitor Formatting & Relay Optimization (2026-09-18)
 - Auto-parsed `ethos_widget_init` payloads in ETHOS app to display clean chat messages with `Visitor #xxxx (/page)` labels.
 - Updated `widget.js` to match owner reply sender IDs and render replies inside widget UI.

@@ -37,7 +37,7 @@ import { validateHistoryPassphrase } from './lib/historyLock';
 import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discovery';
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
 import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
-import { sendLocalNotification } from './lib/notifications';
+import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -77,9 +77,17 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.82';
+const APP_VERSION = '3.1.83';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.83',
+    title: 'Web Notifications Permission Prompt Fix',
+    date: '2026-09-18',
+    changes: [
+      'Auto-prompted Web Notifications permission on app load and handled async permission requests in sendLocalNotification.',
+    ],
+  },
   {
     version: '3.1.82',
     title: 'Widget Visitor Formatting & Relay Optimization',
@@ -657,6 +665,7 @@ export default function App() {
   }, [messages, historyLockEnabled, isHistoryUnlocked]);
 
   useEffect(() => {
+    requestNotificationPermission().catch(() => {});
     return diagnosticsLog.subscribe(() => {
       setDiagnosticEntries(diagnosticsLog.getEntries());
     });
