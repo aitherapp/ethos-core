@@ -79,7 +79,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'ETHOS', body: 'New encrypted message in ETHOS' };
+  let data = { title: 'New Message', body: 'You received a new E2EE message in ETHOS.' };
   if (event.data) {
     try {
       data = event.data.json();
