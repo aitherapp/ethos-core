@@ -279,6 +279,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.81 – Standalone IIFE Widget Bundle Fix (2026-09-18)
+- Configured dedicated IIFE build target for `dist/widget.js` so it loads cleanly as a standalone script on any website without ES module import errors.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.80 – Widget E2EE Signaling & Relay Throttling (2026-09-18)
 - Connected `widget.js` directly to `iroh` signaling to enable two-way E2EE messaging between widget visitors and site owners.
 - Throttled WebRTC candidate bursts in Nostr signaling to prevent Nostr relay rate-limiting/banning.

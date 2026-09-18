@@ -75,9 +75,17 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.80';
+const APP_VERSION = '3.1.81';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.81',
+    title: 'Standalone IIFE Widget Bundle Fix',
+    date: '2026-09-18',
+    changes: [
+      'Bundled widget.js as a standalone self-contained IIFE script without ES module import dependencies for direct browser embedding.',
+    ],
+  },
   {
     version: '3.1.80',
     title: 'Widget Signaling & Relay Throttling Fixes',

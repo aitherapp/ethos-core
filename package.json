@@ -1,14 +1,14 @@
 {
   "name": "E T H O S",
   "private": true,
-  "version": "3.1.80",
+  "version": "3.1.81",
   "type": "module",
   "overrides": {
     "postcss": "8.5.23"
   },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.widget.config.ts",
     "build:release": "npm run build && npm run release:receipt",
     "deploy": "npm run build && gh-pages -d dist -r https://github.com/aitherapp/ethos.git",
     "preview": "vite preview",
