@@ -77,3 +77,25 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'ETHOS', body: 'New encrypted message in ETHOS' };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body || 'New message in ETHOS',
+    icon: './ethos-icon.svg',
+    badge: './ethos-icon.svg',
+    data: data.data || { url: './' },
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'ETHOS', options)
+  );
+});
