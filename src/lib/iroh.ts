@@ -485,6 +485,20 @@ export class IrohManager {
   private ratchetStates: Map<string, RatchetState> = new Map();
   private peerPks: Map<string, { classical: string; pqc: string }> = new Map();
   private peerMetadata: Map<string, { displayName: string }> = new Map();
+  private pushSubscription: PushSubscription | null = null;
+
+  setPushSubscription(subscription: PushSubscription | null) {
+    this.pushSubscription = subscription;
+    if (subscription?.endpoint) {
+      this.pushEndpoint = subscription.endpoint;
+    }
+  }
+
+  getPushSubscription() {
+    return this.pushSubscription;
+  }
+  private pushEndpoint: string | null = null;
+  private peerPushEndpoints: Map<string, string> = new Map();
   private peerMetadataStore = new IndexedDbMessageHistoryStore();
   private groupStore = new IndexedDbMessageHistoryStore();
   private handshakeStatus: Map<string, boolean> = new Map();
@@ -845,6 +859,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcPublicKey: this.identity.pqcPublicKey,
         displayName: this.identity.displayName,
+        pushEndpoint: this.pushEndpoint,
       });
       return;
     }
@@ -908,6 +923,10 @@ export class IrohManager {
         this.persistMetadata();
       }
 
+      if (signal.pushEndpoint) {
+        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
+      }
+
       const ack = {
         senderId: this.currentPeerId,
         type: 'relay-helo-ack',
@@ -915,6 +934,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcCiphertext: ciphertext,
         displayName: this.identity.displayName,
+        pushEndpoint: this.pushEndpoint,
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
@@ -957,6 +977,10 @@ export class IrohManager {
       if (signal.displayName) {
         this.peerMetadata.set(peerId, { displayName: signal.displayName });
         this.persistMetadata();
+      }
+
+      if (signal.pushEndpoint) {
+        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
       }
 
       this.sendNostrSignal(peerId, {
@@ -2241,6 +2265,9 @@ export class IrohManager {
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
   getPeerName(peerId: string) { return this.peerMetadata.get(peerId)?.displayName; }
+  getPeerPushEndpoint(peerId: string) { return this.peerPushEndpoints.get(peerId) || null; }
+  setPushEndpoint(endpoint: string | null) { this.pushEndpoint = endpoint; }
+  getPushEndpoint(peerId: string): string | null { return this.peerPushEndpoints.get(peerId) || null; }
   setPeerDisplayName(peerId: string, displayName: string) {
     this.peerMetadata.set(peerId, { displayName });
     this.persistMetadata().catch(() => {});

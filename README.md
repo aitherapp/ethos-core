@@ -287,6 +287,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.87 – Web Push APNs Endpoint Exchange (2026-09-18)
+- Exchanged Web Push subscription endpoints over signaling so `widget.js` can trigger background push alerts via Apple APNs / Google FCM when the ETHOS PWA is closed.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.86 – iOS PWA Safe Area Fix (2026-09-18)
 - Updated iOS PWA status bar style and top navigation padding so search icon and mobile menu sit cleanly below the iPhone clock/status bar.
 - Refreshed app and service-worker cache versions.

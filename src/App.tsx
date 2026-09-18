@@ -78,9 +78,17 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.86';
+const APP_VERSION = '3.1.87';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.87',
+    title: 'iOS APNs Web Push Exchange',
+    date: '2026-09-18',
+    changes: [
+      'Exchanged Apple APNs push endpoints in handshakes so widget and peer messages trigger background notifications on iPhone PWA.',
+    ],
+  },
   {
     version: '3.1.86',
     title: 'iOS PWA Safe-Area Status Bar Fix',

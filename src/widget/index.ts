@@ -67,8 +67,8 @@ import { SecureMessage } from '../types';
 
       ui.inputField.value = '';
 
-      // Send payload over ETHOS / Nostr
-      const pushEndpoint = currentScript.getAttribute('data-push-endpoint') || null;
+      // Send Web Push notification if endpoint is available
+      const pushEndpoint = currentScript.getAttribute('data-push-endpoint') || iroh.getPushEndpoint(ownerTicket) || iroh.getPushEndpoint(ownerPeerId);
       sendDirectWebPush(pushEndpoint, visitorId, window.location.pathname || '/', text).catch(() => {});
 
       if (isInitialMessage) {
