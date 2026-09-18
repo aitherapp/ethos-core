@@ -78,9 +78,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.84';
+const APP_VERSION = '3.1.85';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.85',
+    title: 'OS Push Testing & Documentation Update',
+    date: '2026-09-18',
+    changes: [
+      'Added Test Push button in Settings to verify OS background notifications.',
+      'Documented Serverless OS Web Push (VAPID) in README.',
+    ],
+  },
   {
     version: '3.1.84',
     title: 'Serverless Web Push (VAPID) OS Notifications',
@@ -2295,6 +2304,29 @@ export default function App() {
                     </div>
                   </button>
                   <p className="text-[9px] opacity-30 mt-2 italic">Uses Pkarr DHT to find peers by name. Requires external proxy for web compatibility.</p>
+                </div>
+
+                <div className="p-3 bg-bg border border-border rounded-lg flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-mono font-bold block text-text">OS Notifications</span>
+                    <span className="text-[9px] opacity-40 block">Test native background push notifications</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await sendLocalNotification("ETHOS Test Notification", {
+                        body: "OS background notifications are active on your device!",
+                      });
+                      if (res === null && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+                        setStatus({ type: 'warning', message: 'Notification permission blocked in browser/OS settings' });
+                      } else {
+                        setStatus({ type: 'info', message: 'Test notification sent! Check your OS Notification Center.' });
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded bg-brand/10 border border-brand/20 text-brand text-[10px] font-bold uppercase hover:bg-brand/20 transition-colors"
+                  >
+                    Test Push
+                  </button>
                 </div>
 
                 <div className="space-y-3">

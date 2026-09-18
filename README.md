@@ -51,7 +51,15 @@ Add the following script tag before the closing `</body>` tag of your site:
 - **Zero Server Overhead:** Uses Nostr relays for end-to-end encrypted signaling. No central backend or database needed.
 - **Shadow DOM Isolation:** Styles are completely isolated to prevent CSS leaks into or out of your website.
 - **Context-Aware:** Captures current page path (`window.location.pathname`) so site owners know which page the visitor is viewing.
-- **Local Notifications:** Site owners receive browser notifications in real-time when ETHOS is open or installed as a PWA.
+- **Serverless OS Web Push Notifications:** Uses W3C VAPID and Service Workers for native OS background notifications across macOS, Windows, Android, and iOS.
+
+## Serverless OS Web Push Notifications (VAPID)
+
+ETHOS uses the W3C Web Push VAPID standard and Service Workers to deliver native background notifications to your operativsystem (macOS, Windows, Android, iOS PWA) when new messages or website widget chats arrive.
+
+- **Zero Central Server:** Uses browser-vendor push portals (Apple APNs, Google FCM, Microsoft WNS). No central database or third-party server sees your messages.
+- **End-to-End Encrypted Payload:** Notification payloads are encrypted with Web Push RFC 8291 (AES-128-GCM) so push portals cannot inspect message text.
+- **Testing Notifications:** Open Settings (`Node Configuration`) in ETHOS and click **Test Push** to verify your browser and OS notification permissions.
 
 ## How Connections Work
 
@@ -279,6 +287,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.85 – OS Push Testing & Documentation Update (2026-09-18)
+- Added `Test Push` button under Settings -> Node Configuration to verify browser and OS notification settings.
+- Documented Serverless OS Web Push (VAPID) section in README.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.84 – Serverless Web Push VAPID Implementation (2026-09-18)
 - Added W3C Web Push VAPID keypair generation and PushManager auto-subscription.
 - Added background `push` event listener in Service Worker for OS notifications on macOS, Windows, Android, and iOS.
