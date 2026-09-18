@@ -57,6 +57,17 @@ let USER_ICE_SERVERS = loadUserIceServers();
 
 export const SIGNAL_KIND = 41002;
 export const RELAY_DATA_KIND = 41003;
+
+export function isPkarrEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem('ethos_enable_pkarr') === 'true';
+}
+
+export function setPkarrEnabled(enabled: boolean): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('ethos_enable_pkarr', enabled ? 'true' : 'false');
+  }
+}
 const RELAY_DATA_TOPIC_SUFFIX = ':data';
 const RELAY_ENVELOPE_VERSION = 1;
 const MAX_RELAY_FILE_SIZE = 512 * 1024;
@@ -1479,21 +1490,23 @@ export class IrohManager {
        const bytes = signedPacket.bytes();
        
        let successCount = 0;
-       for (const relayUrl of PKARR_RELAYS) {
-         try {
-           const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
-           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-           const res = await fetch(proxyUrl, {
-             method: 'PUT',
-             body: bytes,
-             headers: { 'Content-Type': 'application/octet-stream' }
-           });
-           if (res.ok || res.status === 204) {
-             successCount++;
-             console.debug(`Identity published to Pkarr node: ${relayUrl}`);
+       if (isPkarrEnabled()) {
+         for (const relayUrl of PKARR_RELAYS) {
+           try {
+             const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
+             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+             const res = await fetch(proxyUrl, {
+               method: 'PUT',
+               body: bytes,
+               headers: { 'Content-Type': 'application/octet-stream' }
+             });
+             if (res.ok || res.status === 204) {
+               successCount++;
+               console.debug(`Identity published to Pkarr node: ${relayUrl}`);
+             }
+           } catch (e) {
+              // Silent fail – pkarr is best-effort
            }
-         } catch (e) {
-            // Silent fail – pkarr is best-effort
          }
        }
        
@@ -1586,6 +1599,7 @@ export class IrohManager {
   }
 
    private async searchByNamePkarr(name: string): Promise<string | null> {
+     if (!isPkarrEnabled()) return null;
      try {
        const { publicKey } = await this.getDiscoveryKeypair(name);
        let signedPacket: SignedPacket | null = null;

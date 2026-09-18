@@ -279,6 +279,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.79 – Pkarr Toggle & Privacy Fixes (2026-09-18)
+- Added settings toggle for Pkarr DHT peer discovery (disabled by default) to keep ETHOS 100% serverless and eliminate external proxy dependencies.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.78 – CORS & PWA Meta Fixes (2026-09-18)
 - Added `<meta name="mobile-web-app-capable" content="yes">` to fix browser deprecation warning.
 - Fixed Pkarr DHT CORS errors by routing requests through proxy.

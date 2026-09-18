@@ -25,7 +25,7 @@ import {
   Network
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
-import { iroh } from './lib/iroh';
+import { iroh, isPkarrEnabled, setPkarrEnabled } from './lib/iroh';
 import { exportIdentity } from './lib/crypto';
 import { diagnosticsLog, installDiagnosticsConsoleCapture, DiagnosticEntry } from './lib/diagnostics';
 import { IndexedDbMessageHistoryStore, loadEncryptedMessageHistory, saveEncryptedMessageHistory } from './lib/messageHistory';
@@ -75,17 +75,15 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.78';
+const APP_VERSION = '3.1.79';
 
 const ABOUT_CHANGELOG = [
   {
-    version: '3.1.78',
-    title: 'CORS & PWA Meta Fixes',
+    version: '3.1.79',
+    title: 'Pkarr Toggle & Privacy Fixes',
     date: '2026-09-18',
     changes: [
-      'Added mobile-web-app-capable meta tag to prevent browser deprecation warnings.',
-      'Rerouted Pkarr DHT requests through CORS proxy to eliminate console CORS errors.',
-      'Replaced unstable Nostr relay damus.io with nostr.band.',
+      'Added settings toggle for Pkarr DHT peer discovery (disabled by default to avoid external proxy dependency).',
     ],
   },
   {
@@ -517,6 +515,13 @@ export default function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [pkarrEnabled, setPkarrEnabledState] = useState(() => isPkarrEnabled());
+
+  const handleTogglePkarr = () => {
+    const next = !pkarrEnabled;
+    setPkarrEnabled(next);
+    setPkarrEnabledState(next);
+  };
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
@@ -2213,6 +2218,20 @@ export default function App() {
                     placeholder="Enter node alias..."
                   />
                   <p className="text-[9px] opacity-30 mt-2 italic">This name is broadcasted to peers during the HELO handshake.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Discovery Features</label>
+                  <button 
+                    onClick={handleTogglePkarr}
+                    className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${pkarrEnabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
+                  >
+                    <span className="text-xs font-mono">Enable Pkarr DHT Discovery</span>
+                    <div className={`w-8 h-4 rounded-full relative transition-colors ${pkarrEnabled ? 'bg-brand' : 'bg-border'}`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pkarrEnabled ? 'left-4.5' : 'left-0.5'}`} />
+                    </div>
+                  </button>
+                  <p className="text-[9px] opacity-30 mt-2 italic">Uses Pkarr DHT to find peers by name. Requires external proxy for web compatibility.</p>
                 </div>
 
                 <div className="space-y-3">
