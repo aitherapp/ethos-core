@@ -30,8 +30,6 @@ const INBOUND_TRANSFER_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_NOSTR_RELAYS = [
   'wss://nos.lol',
   'wss://relay.primal.net',
-  'wss://relay.nostr.band',
-  'wss://offchain.pub',
   'wss://nostr.mom'
 ];
 
@@ -2243,6 +2241,10 @@ export class IrohManager {
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
   getPeerName(peerId: string) { return this.peerMetadata.get(peerId)?.displayName; }
+  setPeerDisplayName(peerId: string, displayName: string) {
+    this.peerMetadata.set(peerId, { displayName });
+    this.persistMetadata().catch(() => {});
+  }
   getGroups() { return Array.from(this.groups.values()); }
   isGroupOwner(groupId: string) { return this.groups.get(groupId)?.ownerId === this.identity?.id; }
   setDisplayName(name: string) {

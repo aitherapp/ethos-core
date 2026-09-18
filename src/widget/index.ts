@@ -33,13 +33,14 @@ import { SecureMessage } from '../types';
     
     // Connect to site owner's ETHOS ticket
     const ownerTicket = config.ownerTicket;
+    const ownerPeerId = ownerTicket.replace('ethos://node/', '').slice(0, 8);
     await iroh.connectByTicket(ownerTicket);
 
     let isInitialMessage = true;
 
     // Listen for replies from site owner
     iroh.onMessage((msg: SecureMessage) => {
-      if (msg.senderId === ownerTicket || msg.receiverId === visitorId) {
+      if (msg.senderId.includes(ownerPeerId) || ownerTicket.includes(msg.senderId) || msg.senderId === ownerTicket) {
         const replyText = msg.content;
         if (replyText) {
           const msgEl = document.createElement('div');

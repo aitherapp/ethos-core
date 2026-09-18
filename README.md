@@ -279,6 +279,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.82 – Widget Visitor Formatting & Relay Optimization (2026-09-18)
+- Auto-parsed `ethos_widget_init` payloads in ETHOS app to display clean chat messages with `Visitor #xxxx (/page)` labels.
+- Updated `widget.js` to match owner reply sender IDs and render replies inside widget UI.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.81 – Standalone IIFE Widget Bundle Fix (2026-09-18)
 - Configured dedicated IIFE build target for `dist/widget.js` so it loads cleanly as a standalone script on any website without ES module import errors.
 - Refreshed app and service-worker cache versions.

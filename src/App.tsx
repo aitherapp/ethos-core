@@ -36,6 +36,8 @@ import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donat
 import { validateHistoryPassphrase } from './lib/historyLock';
 import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discovery';
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
+import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
+import { sendLocalNotification } from './lib/notifications';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -75,9 +77,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.81';
+const APP_VERSION = '3.1.82';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.82',
+    title: 'Widget Visitor Formatting & Relay Optimization',
+    date: '2026-09-18',
+    changes: [
+      'Auto-formatted incoming widget JSON payloads to clean chat messages with Visitor #xxxx (/page) contact labels.',
+      'Matched owner reply sender IDs in widget.js and removed restrictive Nostr relays.',
+    ],
+  },
   {
     version: '3.1.81',
     title: 'Standalone IIFE Widget Bundle Fix',
@@ -653,20 +664,31 @@ export default function App() {
 
   useEffect(() => {
     iroh.onMessage((msg) => {
-      if (msg.type === 'reaction') {
+      let processedMsg = msg;
+      const widgetMeta = parseWidgetMetadata(msg.content);
+      if (widgetMeta) {
+        processedMsg = { ...msg, content: widgetMeta.message };
+        const visitorLabel = formatWidgetContactName(widgetMeta.visitorId, widgetMeta.page);
+        iroh.setPeerDisplayName(msg.senderId, visitorLabel);
+        sendLocalNotification(`New chat from ${widgetMeta.visitorId}`, {
+          body: `[${widgetMeta.page}] ${widgetMeta.message}`,
+        });
+      }
+
+      if (processedMsg.type === 'reaction') {
         setMessages(prev => prev.map(m => {
-          if (m.id === msg.targetMessageId) {
+          if (m.id === processedMsg.targetMessageId) {
             const reactions = { ...m.reactions };
-            const users = reactions[msg.content] || [];
-            if (!users.includes(msg.senderId)) {
-              reactions[msg.content] = [...users, msg.senderId];
+            const users = reactions[processedMsg.content] || [];
+            if (!users.includes(processedMsg.senderId)) {
+              reactions[processedMsg.content] = [...users, processedMsg.senderId];
             }
             return { ...m, reactions };
           }
           return m;
         }));
       } else {
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => [...prev, processedMsg]);
       }
       
       setPeers(prev => prev.includes(msg.senderId) ? prev : [...prev, msg.senderId]);
