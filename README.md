@@ -279,6 +279,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.84 – Serverless Web Push VAPID Implementation (2026-09-18)
+- Added W3C Web Push VAPID keypair generation and PushManager auto-subscription.
+- Added background `push` event listener in Service Worker for OS notifications on macOS, Windows, Android, and iOS.
+- Added direct Web Push HTTP trigger in `widget.js` for instant background alerts.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.83 – Web Notifications Permission Prompt Fix (2026-09-18)
 - Prompted browser notification permissions on app mount so background visitor alerts display reliably.
 - Refreshed app and service-worker cache versions.

@@ -1,6 +1,7 @@
 import { iroh } from '../lib/iroh';
 import { parseWidgetConfig, generateVisitorId, createWidgetPayload } from './widgetCore';
 import { createWidgetDOM } from './widgetUI';
+import { sendDirectWebPush } from './pushTrigger';
 import { SecureMessage } from '../types';
 
 (async function initEthosWidget() {
@@ -67,6 +68,9 @@ import { SecureMessage } from '../types';
       ui.inputField.value = '';
 
       // Send payload over ETHOS / Nostr
+      const pushEndpoint = currentScript.getAttribute('data-push-endpoint') || null;
+      sendDirectWebPush(pushEndpoint, visitorId, window.location.pathname || '/', text).catch(() => {});
+
       if (isInitialMessage) {
         const payload = createWidgetPayload(
           visitorId,

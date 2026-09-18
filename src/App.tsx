@@ -38,6 +38,7 @@ import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discove
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
 import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
 import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
+import { getOrCreateVapidPublicKey, subscribeToWebPush } from './lib/webPush';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -77,9 +78,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.83';
+const APP_VERSION = '3.1.84';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.84',
+    title: 'Serverless Web Push (VAPID) OS Notifications',
+    date: '2026-09-18',
+    changes: [
+      'Implemented W3C VAPID & Web Push API with background Service Worker push event listener for native OS notifications across macOS, Windows, Android, and iOS PWA.',
+      'Added direct Web Push HTTP trigger in widget.js for visitor message alerts.',
+    ],
+  },
   {
     version: '3.1.83',
     title: 'Web Notifications Permission Prompt Fix',
@@ -665,7 +675,12 @@ export default function App() {
   }, [messages, historyLockEnabled, isHistoryUnlocked]);
 
   useEffect(() => {
-    requestNotificationPermission().catch(() => {});
+    requestNotificationPermission().then(() => {
+      getOrCreateVapidPublicKey().then(vapidKey => {
+        subscribeToWebPush(vapidKey).catch(() => {});
+      });
+    }).catch(() => {});
+
     return diagnosticsLog.subscribe(() => {
       setDiagnosticEntries(diagnosticsLog.getEntries());
     });
