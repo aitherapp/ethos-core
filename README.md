@@ -243,6 +243,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.76 – Security Update (Vitest) (2026-09-18)
+- Updated Vitest to v4.1.11 to patch GHSA-82fw-gwwq-j7x9 path traversal vulnerability.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.75 – Weekly Canary Update (2026-09-18)
 - Updated the weekly canary statement.
 - Refreshed app cache to prevent stale builds.
