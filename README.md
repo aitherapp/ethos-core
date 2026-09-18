@@ -7,6 +7,8 @@ The project is designed around one rule: user content must never fall back to pl
 ## What You Can Do
 
 - Send end-to-end encrypted one-to-one messages.
+- Embed a private, zero-server live chat widget (`widget.js`) on any website for instant visitor messaging.
+- Receive serverless Web Notifications for background visitor messages.
 - Create encrypted group chats with persisted group membership.
 - Transfer encrypted files directly between devices when WebRTC is available.
 - Continue communicating through encrypted Nostr relay fallback when a direct tunnel cannot be established.
@@ -16,6 +18,40 @@ The project is designed around one rule: user content must never fall back to pl
 - Copy mobile diagnostics from inside the app when a peer connection needs troubleshooting.
 - Treat display-name discovery as unverified; direct peer tickets are the trusted connection path.
 - On small screens, use the top-right menu for Network/Metrics, About, and Settings.
+
+## Embeddable Live Chat Widget
+
+ETHOS includes a zero-server, privacy-first live chat widget (Intercom/Crisp alternative) that can be embedded into any website with a single script tag. All messages are end-to-end encrypted between site visitors and the site owner's ETHOS app.
+
+### How to Embed on Your Website
+
+Add the following script tag before the closing `</body>` tag of your site:
+
+```html
+<script 
+  src="https://aitherapp.github.io/ethos/widget.js" 
+  data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
+  data-title="Support & Feedback"
+  data-greeting="Hello! How can we help you today?"
+  data-color="#000000"
+  async>
+</script>
+```
+
+### Configuration Options
+
+| Attribute | Required | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `data-owner-ticket` | **Yes** | Your ETHOS node ticket (`ethos://node/...`) where visitor messages will be sent. Copy from **Share/Connect tickets** in ETHOS. | — |
+| `data-title` | No | Title displayed in the widget header. | `Chat with us` |
+| `data-greeting` | No | Initial greeting message displayed to visitors. | `Hello! How can we help you today?` |
+| `data-color` | No | Hex color code for the widget launcher bubble and header. | `#000000` |
+
+### Key Features
+- **Zero Server Overhead:** Uses Nostr relays for end-to-end encrypted signaling. No central backend or database needed.
+- **Shadow DOM Isolation:** Styles are completely isolated to prevent CSS leaks into or out of your website.
+- **Context-Aware:** Captures current page path (`window.location.pathname`) so site owners know which page the visitor is viewing.
+- **Local Notifications:** Site owners receive browser notifications in real-time when ETHOS is open or installed as a PWA.
 
 ## How Connections Work
 
