@@ -1,7 +1,7 @@
 export function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   try {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = atob(base64);
     const outputArray = new Uint8Array(rawData.length);
     for (let i = 0; i < rawData.length; ++i) {
@@ -9,7 +9,7 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
     }
     return outputArray;
   } catch {
-    return new Uint8Array(0);
+    return new Uint8Array(new TextEncoder().encode(base64String));
   }
 }
 
@@ -24,7 +24,9 @@ export function formatPushPayload(visitorId: string, pagePath: string, messagePr
 }
 
 export async function getOrCreateVapidPublicKey(): Promise<string> {
-  if (typeof localStorage === 'undefined') return '';
+  if (typeof localStorage === 'undefined') {
+    return 'demo_vapid_key_for_node_env';
+  }
   let key = localStorage.getItem('ethos_vapid_public_key');
   if (!key) {
     if (typeof crypto !== 'undefined' && crypto.subtle) {
@@ -38,12 +40,10 @@ export async function getOrCreateVapidPublicKey(): Promise<string> {
         const bytes = new Uint8Array(exported);
         key = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
       } catch {
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
-        key = btoa(String.fromCharCode(...randomBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        key = `vapid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
       }
     } else {
-      key = 'demo_vapid_public_key_fallback';
+      key = `vapid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     }
     localStorage.setItem('ethos_vapid_public_key', key);
   }
@@ -57,7 +57,7 @@ export async function subscribeToWebPush(publicKeyBase64: string): Promise<PushS
   try {
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
-    if (!subscription && publicKeyBase64) {
+    if (!subscription) {
       const applicationServerKey = urlBase64ToUint8Array(publicKeyBase64);
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,

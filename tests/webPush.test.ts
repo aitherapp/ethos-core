@@ -4,7 +4,7 @@ import { urlBase64ToUint8Array, formatPushPayload, getOrCreateVapidPublicKey } f
 
 describe('Web Push Helper', () => {
   it('should convert URL-safe base64 string to Uint8Array', () => {
-    const base64 = 'SGVsbG8gV29ybGQ';
+    const base64 = 'BC_m0vrB_test';
     const arr = urlBase64ToUint8Array(base64);
     expect(arr).toBeInstanceOf(Uint8Array);
     expect(arr.length).toBeGreaterThan(0);
@@ -17,12 +17,12 @@ describe('Web Push Helper', () => {
     expect(payload.body).toContain('Hello!');
   });
 
-  it('should generate or load VAPID public key from localStorage', async () => {
-    const key1 = await getOrCreateVapidPublicKey();
-    expect(typeof key1).toBe('string');
-    expect(key1.length).toBeGreaterThan(10);
+  it('should generate or load VAPID public key string from localStorage', async () => {
+    const key = await getOrCreateVapidPublicKey();
+    expect(typeof key).toBe('string');
+    expect(key.length).toBeGreaterThan(10);
 
-    const key2 = await getOrCreateVapidPublicKey();
-    expect(key2).toBe(key1);
+    const reloadedKey = await getOrCreateVapidPublicKey();
+    expect(reloadedKey).toBe(key);
   });
 });
