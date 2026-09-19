@@ -59,11 +59,11 @@ The gateway is a dumb, authenticated pipe: it does not participate in chat E2EE 
 Stored locally (e.g. `localStorage`), applied only when opt-in is on:
 
 - `Enable background push` — boolean, **default false**
-- `Push gateway URL` — HTTPS Worker URL
+- `Push gateway URL` — any HTTPS base URL that implements the ETHOS push-gateway API (not Cloudflare-specific)
 - `Notification content` — `Minimal` | `Sender` | `Preview` (default `Sender`)
 - `Notify when` — `Background only` | `Always` (default `Background only`)
 
-Help text explains Deploy to Cloudflare + paste URL. No requirement that the user invent secrets manually if deploy automates them (see Security).
+Help text covers: (1) one-click Cloudflare deploy of the reference Worker, and (2) that any host is fine if it speaks the same API. No requirement that the user invent secrets manually if the reference deploy automates them (see Security).
 
 ### Content modes
 
