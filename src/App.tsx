@@ -38,8 +38,16 @@ import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discove
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
 import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
 import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
-import { loadPushSettings } from './lib/pushSettings';
+import {
+  loadPushSettings,
+  savePushSettings,
+  isHttpsGatewayUrl,
+  type PushContentMode,
+  type PushSettings,
+  type PushTriggerMode,
+} from './lib/pushSettings';
 import { enablePushPipeline } from './lib/pushPipeline';
+import { sendViaPushGateway } from './lib/pushGatewayClient';
 import { parseChatDeepLink } from './lib/pushNotify';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
@@ -599,12 +607,9 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [pkarrEnabled, setPkarrEnabledState] = useState(() => isPkarrEnabled());
-
-  const handleTogglePkarr = () => {
-    const next = !pkarrEnabled;
-    setPkarrEnabled(next);
-    setPkarrEnabledState(next);
-  };
+  const [pushSettings, setPushSettings] = useState<PushSettings>(() => loadPushSettings());
+  const [isPushSaving, setIsPushSaving] = useState(false);
+  const [isGatewayTesting, setIsGatewayTesting] = useState(false);
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
@@ -634,6 +639,77 @@ export default function App() {
   const [groupDeleteTarget, setGroupDeleteTarget] = useState<Group | null>(null);
   const [selectedPeers, setSelectedPeers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+
+  const handleTogglePkarr = () => {
+    const next = !pkarrEnabled;
+    setPkarrEnabled(next);
+    setPkarrEnabledState(next);
+  };
+
+  const persistPushSettings = async (next: PushSettings) => {
+    savePushSettings(next);
+    setPushSettings(next);
+    if (!next.enabled) {
+      return;
+    }
+    setIsPushSaving(true);
+    try {
+      const ok = await enablePushPipeline(next);
+      if (ok) {
+        setStatus({ type: 'info', message: 'Background push enabled and registered with your gateway.' });
+      } else {
+        setStatus({
+          type: 'warning',
+          message: 'Could not enable background push. Check HTTPS gateway URL, auth token, and notification permission.',
+        });
+      }
+    } finally {
+      setIsPushSaving(false);
+    }
+  };
+
+  const handleToggleBackgroundPush = () => {
+    const next = { ...pushSettings, enabled: !pushSettings.enabled };
+    void persistPushSettings(next);
+  };
+
+  const handleTestGatewayPush = async () => {
+    if (!pushSettings.enabled || !isHttpsGatewayUrl(pushSettings.gatewayUrl)) {
+      setStatus({ type: 'warning', message: 'Enable background push with a valid HTTPS gateway URL first.' });
+      return;
+    }
+    setIsGatewayTesting(true);
+    try {
+      let subscription = iroh.getPushSubscription();
+      if (!subscription) {
+        const ok = await enablePushPipeline(pushSettings);
+        if (!ok) {
+          setStatus({ type: 'warning', message: 'Gateway registration failed before test push.' });
+          return;
+        }
+        subscription = iroh.getPushSubscription();
+      }
+      if (!subscription) {
+        setStatus({ type: 'warning', message: 'No push subscription available for gateway test.' });
+        return;
+      }
+      const ok = await sendViaPushGateway({
+        baseUrl: pushSettings.gatewayUrl,
+        authToken: pushSettings.authToken,
+        subscription: subscription.toJSON(),
+        title: 'ETHOS',
+        body: 'Gateway test notification',
+        data: { peerId: identity?.id ?? '', messageId: `test-${Date.now()}` },
+      });
+      if (ok) {
+        setStatus({ type: 'info', message: 'Test gateway push sent. Check your OS Notification Center.' });
+      } else {
+        setStatus({ type: 'warning', message: 'Gateway rejected the test push. Check URL, token, and registration.' });
+      }
+    } finally {
+      setIsGatewayTesting(false);
+    }
+  };
 
   const allPersistedPeers = [...new Set([...peers, ...knownPeers])];
   const filteredPeers = allPersistedPeers.filter(id => 
@@ -2414,27 +2490,115 @@ export default function App() {
                   <p className="text-[9px] opacity-30 mt-2 italic">Uses Pkarr DHT to find peers by name. Requires external proxy for web compatibility.</p>
                 </div>
 
-                <div className="p-3 bg-bg border border-border rounded-lg flex items-center justify-between gap-3">
+                <div className="space-y-3 p-3 bg-bg border border-border rounded-lg">
                   <div>
                     <span className="text-xs font-mono font-bold block text-text">OS Notifications</span>
-                    <span className="text-[9px] opacity-40 block">Test native background push notifications</span>
+                    <span className="text-[9px] opacity-40 block">Opt-in background push via your own HTTPS gateway</span>
                   </div>
+
                   <button
                     type="button"
-                    onClick={async () => {
-                      const res = await sendLocalNotification("ETHOS Test Notification", {
-                        body: "OS background notifications are active on your device!",
-                      });
-                      if (res === null && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-                        setStatus({ type: 'warning', message: 'Notification permission blocked in browser/OS settings' });
-                      } else {
-                        setStatus({ type: 'info', message: 'Test notification sent! Check your OS Notification Center.' });
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded bg-brand/10 border border-brand/20 text-brand text-[10px] font-bold uppercase hover:bg-brand/20 transition-colors"
+                    onClick={handleToggleBackgroundPush}
+                    disabled={isPushSaving}
+                    className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${pushSettings.enabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
                   >
-                    Test Push
+                    <span className="text-xs font-mono">Enable background push</span>
+                    <div className={`w-8 h-4 rounded-full relative transition-colors ${pushSettings.enabled ? 'bg-brand' : 'bg-border'}`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pushSettings.enabled ? 'left-4.5' : 'left-0.5'}`} />
+                    </div>
                   </button>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Gateway URL</label>
+                    <input
+                      type="url"
+                      value={pushSettings.gatewayUrl}
+                      onChange={(e) => setPushSettings(current => ({ ...current, gatewayUrl: e.target.value }))}
+                      className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                      placeholder="https://your-push-gateway.example"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Auth token</label>
+                    <input
+                      type="password"
+                      value={pushSettings.authToken}
+                      onChange={(e) => setPushSettings(current => ({ ...current, authToken: e.target.value }))}
+                      className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                      placeholder="Bearer token from your gateway"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Content mode</label>
+                      <select
+                        value={pushSettings.contentMode}
+                        onChange={(e) => setPushSettings(current => ({
+                          ...current,
+                          contentMode: e.target.value as PushContentMode,
+                        }))}
+                        className="w-full bg-bg border border-border rounded px-2 py-2 text-[10px] font-mono focus:border-brand outline-none"
+                      >
+                        <option value="Minimal">Minimal</option>
+                        <option value="Sender">Sender</option>
+                        <option value="Preview">Preview</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Notify when</label>
+                      <select
+                        value={pushSettings.triggerMode}
+                        onChange={(e) => setPushSettings(current => ({
+                          ...current,
+                          triggerMode: e.target.value as PushTriggerMode,
+                        }))}
+                        className="w-full bg-bg border border-border rounded px-2 py-2 text-[10px] font-mono focus:border-brand outline-none"
+                      >
+                        <option value="Background only">Background only</option>
+                        <option value="Always">Always</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <p className="text-[9px] opacity-40 leading-relaxed">
+                    Deploy the reference Worker with one-click Cloudflare (see{' '}
+                    <a href="./push-gateway/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
+                      push-gateway/README.md
+                    </a>
+                    ). Any HTTPS host that implements the same API works.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await sendLocalNotification('ETHOS Test Notification', {
+                          body: 'Local OS notifications are active on your device!',
+                        });
+                        if (res === null && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+                          setStatus({ type: 'warning', message: 'Notification permission blocked in browser/OS settings' });
+                        } else {
+                          setStatus({ type: 'info', message: 'Test local notification sent! Check your OS Notification Center.' });
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded bg-brand/10 border border-brand/20 text-brand text-[10px] font-bold uppercase hover:bg-brand/20 transition-colors"
+                    >
+                      Test local notification
+                    </button>
+                    {pushSettings.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => void handleTestGatewayPush()}
+                        disabled={isGatewayTesting || isPushSaving}
+                        className="px-3 py-1.5 rounded border border-border/60 hover:border-brand/40 text-text-secondary hover:text-brand text-[10px] font-bold uppercase transition-colors disabled:opacity-30"
+                      >
+                        {isGatewayTesting ? 'Testing gateway...' : 'Test gateway push'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -2768,6 +2932,7 @@ export default function App() {
                         iroh.updateRelays(relays);
                         iroh.updateIceServers(iceServers);
                         setIdentity(iroh.getIdentity());
+                        void persistPushSettings(pushSettings);
                         setShowSettings(false);
                       }}
                       className="bg-brand text-black px-6 py-2 rounded text-[10px] uppercase font-bold hover:opacity-90 transition-opacity"
