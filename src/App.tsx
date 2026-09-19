@@ -88,7 +88,7 @@ const ABOUT_CHANGELOG = [
     changes: [
       'Replaced insecure Math.random VAPID fallback with crypto.getRandomValues.',
       'Peer chat push only when offline, with a generic New message body so E2E plaintext never reaches the lock screen.',
-      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
     ],
   },
   {
