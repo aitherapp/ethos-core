@@ -88,9 +88,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.89';
+const APP_VERSION = '3.1.90';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.90',
+    title: 'One-Click Push Gateway Setup',
+    date: '2026-09-19',
+    changes: [
+      'After Cloudflare one-click deploy, open your Worker URL to copy the gateway URL and auth token from an English setup page (shown once).',
+      'No Wrangler or secret scripts required for the default path; CLI secret generation remains available as Advanced.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.89',
     title: 'Opt-in BYO Push Gateway',
@@ -2593,11 +2603,11 @@ export default function App() {
                   </div>
 
                   <p className="text-[9px] opacity-40 leading-relaxed">
-                    Deploy the reference Worker with one-click Cloudflare (see{' '}
+                    After one-click Cloudflare deploy, open your Worker URL to copy the auth token (shown once). See{' '}
                     <a href="./push-gateway/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
                       push-gateway/README.md
                     </a>
-                    ). Any HTTPS host that implements the same API works.
+                    . Any HTTPS host that implements the same API works.
                   </p>
 
                   <div className="flex flex-wrap gap-2">

@@ -15,23 +15,28 @@ It never stores chat message bodies. Defaults fail closed (no open relay).
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/aitherapp/ethos-core/tree/main/push-gateway)
 
-Until `push-gateway/` lands on `main`, prefer the Wrangler CLI steps below (or retarget the button at the feature branch that contains this folder).
+1. Click **Deploy to Cloudflare** and finish the Cloudflare wizard.
+2. Open your Worker **HTTPS URL** in the browser (shown after deploy).
+3. On the setup page, **copy the Gateway URL and Auth token** immediately.
+   - The auth token is shown **once**. Click **I've saved this** after copying.
+   - Open the URL yourself right after deploy; do not share it until the token is saved.
+4. In ETHOS → **Settings** → **OS Notifications**: enable **background push**, paste **Gateway URL** and **Auth token**, then **Save Changes**.
 
-Or from this folder:
+### Advanced (CLI secrets)
+
+Use only if you prefer Cloudflare Secrets instead of the setup page:
 
 ```bash
 cd push-gateway
 npm install
-npx wrangler kv namespace create SUBSCRIPTIONS
-# Paste the returned id into wrangler.toml [[kv_namespaces]] id=
-npm run generate-secrets   # copy printed values — do not commit them
-# set secrets as printed by the script
+npm run generate-secrets
+# wrangler secret put AUTH_TOKEN / VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
 npx wrangler deploy
 ```
 
-After deploy, copy the Worker **HTTPS URL** and your **AUTH_TOKEN** into ETHOS:
+When all three secrets are set, the setup page shows "Configured via Cloudflare Secrets" and does not reveal a token.
 
-**Settings → Enable background push → Push gateway URL** (+ auth token as documented in the app).
+**Already deployed?** Redeploy the latest Worker and open your Worker URL again. To issue a new one-time bootstrap token, delete the bootstrap key in your `SUBSCRIPTIONS` KV namespace, then reload the setup page.
 
 ## HTTP API
 
@@ -51,7 +56,8 @@ After deploy, copy the Worker **HTTPS URL** and your **AUTH_TOKEN** into ETHOS:
 4. **Payload limits** — title ≤ 100, body ≤ 200, plain text only  
 5. **Rate limit** — 30 pushes / token / minute  
 6. **No body logging** — never log title, body, data, or subscription keys  
-7. **Secrets** — VAPID private key + auth token only in Cloudflare Secrets  
+7. **Credentials** — one-click setup stores auth token + VAPID keys in KV; Cloudflare Secrets override when all three (`AUTH_TOKEN`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`) are set  
+
 
 ## Rotate secrets
 

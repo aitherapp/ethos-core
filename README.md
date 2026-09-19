@@ -64,7 +64,7 @@ Delivery still goes through vendor push networks (Apple APNs, Google FCM, Micros
 Background push is **off by default**. Turn it on when you want alerts while the ETHOS tab or PWA is in the background.
 
 1. **Deploy a gateway** (pick one path):
-   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`push-gateway/README.md`](push-gateway/README.md), or follow the `wrangler` steps there. After deploy, copy the Worker **HTTPS URL** and the **`AUTH_TOKEN`** from the setup script.
+   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`push-gateway/README.md`](push-gateway/README.md). After deploy, **open your Worker HTTPS URL**, copy the gateway URL and auth token from the setup page, then paste them into ETHOS Settings. (CLI secret generation is documented under Advanced in that README.)
    - **Any host:** Run any HTTPS service that implements the same ETHOS push-gateway HTTP API (`GET /v1/vapid-public-key`, subscription register/unregister, `POST /v1/push`). See [`push-gateway/README.md`](push-gateway/README.md) for the full route list and security defaults.
 2. **Open ETHOS → Settings** (top-right menu on mobile) and scroll to **OS Notifications**.
 3. Turn on **Enable background push**, paste **Gateway URL** and **Auth token**, choose **Content mode** and **Notify when**, then **Save Changes**. Saving registers this browser’s push subscription with your gateway.
@@ -319,6 +319,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.90 – One-Click Push Gateway Setup (2026-09-19)
+- After Cloudflare one-click deploy, open the Worker HTTPS URL to copy the gateway URL and auth token from the English setup page (token shown once).
+- Default path needs no Wrangler or `generate-secrets`; CLI secrets remain under Advanced in [`push-gateway/README.md`](push-gateway/README.md).
+- Refreshed app and service-worker cache versions; weekly warrant canary dates updated.
+
 ### v3.1.89 – Opt-in BYO Push Gateway (2026-09-19)
 - Added opt-in background OS push via a user-owned HTTPS push gateway (Cloudflare Workers one-click reference in `push-gateway/`, or any host that implements the same API).
 - Settings: enable push, gateway URL, auth token, content mode (Minimal / Sender / Preview), and notify when (Background only / Always).
