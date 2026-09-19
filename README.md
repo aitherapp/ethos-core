@@ -64,7 +64,7 @@ Delivery still goes through vendor push networks (Apple APNs, Google FCM, Micros
 Background push is **off by default**. Turn it on when you want alerts while the ETHOS tab or PWA is in the background.
 
 1. **Deploy a gateway** (pick one path):
-   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`push-gateway/README.md`](push-gateway/README.md), or follow the `wrangler` steps there. After deploy, copy the Worker **HTTPS URL** and the **`AUTH_TOKEN`** from the setup script.
+   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`push-gateway/README.md`](push-gateway/README.md). After deploy, **open your Worker HTTPS URL**, copy the gateway URL and auth token from the setup page, then paste them into ETHOS Settings. (CLI secret generation is documented under Advanced in that README.)
    - **Any host:** Run any HTTPS service that implements the same ETHOS push-gateway HTTP API (`GET /v1/vapid-public-key`, subscription register/unregister, `POST /v1/push`). See [`push-gateway/README.md`](push-gateway/README.md) for the full route list and security defaults.
 2. **Open ETHOS → Settings** (top-right menu on mobile) and scroll to **OS Notifications**.
 3. Turn on **Enable background push**, paste **Gateway URL** and **Auth token**, choose **Content mode** and **Notify when**, then **Save Changes**. Saving registers this browser’s push subscription with your gateway.

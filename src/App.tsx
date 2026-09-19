@@ -2593,11 +2593,11 @@ export default function App() {
                   </div>
 
                   <p className="text-[9px] opacity-40 leading-relaxed">
-                    Deploy the reference Worker with one-click Cloudflare (see{' '}
+                    After one-click Cloudflare deploy, open your Worker URL to copy the auth token (shown once). See{' '}
                     <a href="./push-gateway/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
                       push-gateway/README.md
                     </a>
-                    ). Any HTTPS host that implements the same API works.
+                    . Any HTTPS host that implements the same API works.
                   </p>
 
                   <div className="flex flex-wrap gap-2">
