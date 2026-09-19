@@ -19,8 +19,8 @@ ETHOS cannot operate shared push servers. Users who want background push must br
 - One push pipeline for **widget** and **peer ↔ peer**.
 - Works across Safari/Chrome (and equivalents) on macOS, Windows, Linux, Android, and **iPhone/iPad home-screen PWA** where the platform supports Web Push.
 - **Opt-in** only; default is push gateway disabled.
-- Users configure **their own** Cloudflare Worker URL in Settings.
-- Ship Worker source + **one-click Deploy to Cloudflare** so non-experts get a working, **secure-by-default** gateway.
+- Users configure **any** HTTPS gateway URL in Settings that implements the ETHOS push-gateway HTTP API (provider-agnostic).
+- Ship a **reference implementation** as a Cloudflare Worker + **one-click Deploy to Cloudflare** so non-experts get a working, **secure-by-default** gateway quickly — without locking the client to Cloudflare.
 - User controls **notification content** and **when** to notify.
 - Notification click opens the **correct conversation and message**.
 - All user-facing docs, README, Settings copy, and code identifiers in **English**.
@@ -36,7 +36,8 @@ ETHOS cannot operate shared push servers. Users who want background push must br
 
 | Topic | Choice |
 |-------|--------|
-| Hosting | BYO Cloudflare Worker only |
+| Hosting | BYO gateway via HTTPS URL; **Cloudflare Worker is the reference + one-click option**, not the only allowed host |
+| Client coupling | ETHOS talks only to the documented HTTP API — no Cloudflare-specific client APIs |
 | Default | Opt-in (disabled until user enables + sets URL) |
 | Content modes | `Minimal` \| `Sender` \| `Preview` |
 | Trigger modes | `Background only` \| `Always` |
@@ -48,10 +49,10 @@ ETHOS cannot operate shared push servers. Users who want background push must br
 
 ### Roles
 
-- **Recipient** owns the Worker (VAPID keypair + auth secret live only in Cloudflare Secrets).
-- **Sender** (another ETHOS peer, or the website widget) calls the **recipient’s** gateway URL with an auth token obtained via E2EE handshake (or, for the owner’s own widget path, credentials provisioned for that owner).
+- **Recipient** owns a gateway that implements this API (VAPID keypair + auth secret live only in that host’s secret store — e.g. Cloudflare Secrets, or env vars on another host).
+- **Sender** (another ETHOS peer, or the website widget) calls the **recipient’s** gateway base URL with an auth token obtained via E2EE handshake (or, for the owner’s own widget path, credentials provisioned for that owner).
 
-The gateway is a dumb, authenticated pipe: it does not participate in chat E2EE and must not persist payloads.
+The gateway is a dumb, authenticated pipe: it does not participate in chat E2EE and must not persist notification bodies.
 
 ### Settings (English UI)
 
@@ -89,16 +90,28 @@ Notification `data` includes at least:
 
 `notificationclick` in `public/sw.js` focuses an existing window or opens the app, then posts a message / uses URL hash so the React app selects that chat and scrolls/highlights that message. If the message is not yet in local history, open the conversation and surface a clear “jump when available” behavior rather than failing silently.
 
-## Push gateway Worker
+## Push gateway (HTTP API + reference Worker)
 
-### Location
+### Portability
 
-`push-gateway/` in this repository, with:
+The **contract** is the HTTP API below. ETHOS clients only need:
+
+- Gateway base URL (HTTPS)
+- Auth token
+- Compatibility with `GET /v1/vapid-public-key`, `POST /v1/subscriptions`, `POST /v1/push` (and optional delete/health)
+
+Any runtime may implement it: Cloudflare Workers, Fastly Compute, Deno Deploy, Fly.io, a small Node/Go service on a VPS, etc. Operators who are not on Cloudflare follow the API + security requirements (allowlist, registration binding, rate limits, no body logging).
+
+### Reference implementation (Cloudflare)
+
+`push-gateway/` in this repository provides:
 
 - Worker source (TypeScript or JS)
 - `wrangler.toml`
 - README (English) with **Deploy to Cloudflare** button / one-click instructions
-- Scripts that **generate** VAPID keypair + auth token on first deploy and set Cloudflare Secrets (user does not need to invent crypto)
+- Scripts that **generate** VAPID keypair + auth token on first deploy and set secrets (user does not need to invent crypto)
+
+This is the recommended path for non-experts. It is **not** exclusive.
 
 ### HTTP API (illustrative)
 
@@ -114,7 +127,7 @@ Fail closed on missing/invalid auth, disallowed endpoint host, **unregistered en
 
 Two layers, both enforced by default:
 
-1. **Host allowlist** — `endpoint` URL hostname must match a maintained list of known Web Push services (e.g. `web.push.apple.com`, `fcm.googleapis.com`, `updates.push.services.mozilla.com`, and other documented Chromium/Firefox/Safari hosts). Use precise hostnames (not broad `*.googleapis.com`). Reject everything else (SSRF protection). Keep the list in Worker source so one-click deploys stay current when ETHOS updates the template.
+1. **Host allowlist** — `endpoint` URL hostname must match a maintained list of known Web Push services (e.g. `web.push.apple.com`, `fcm.googleapis.com`, `updates.push.services.mozilla.com`, and other documented Chromium/Firefox/Safari hosts). Use precise hostnames (not broad `*.googleapis.com`). Reject everything else (SSRF protection). Keep the list in the reference Worker (and document it for alternate implementations) so deploys stay current when ETHOS updates the template.
 2. **Registration binding** — `POST /v1/push` succeeds only if that exact `endpoint` (or subscription id derived from it) was previously registered via `POST /v1/subscriptions` for the same auth token. Knowing the Worker URL alone is not enough; the subscription must have been enrolled by the owner’s ETHOS client after subscribe.
 
 Registration metadata on the Worker may store **endpoint URL + push encryption keys (`p256dh`, `auth`) + timestamps** as required to send Web Push — not chat message bodies. Apply TTL/max entries per token so a Worker cannot grow without bound. No logging of keys or notification bodies.
@@ -134,8 +147,8 @@ Target operators: people who are **not** security experts. Defaults must be safe
 ### Built-in controls (required)
 
 1. **Auth token required** on all mutating routes (`POST /v1/push`). No anonymous push.
-2. **Secrets only in Cloudflare Secrets** (VAPID private key, auth token). Never commit secrets; never ship private VAPID key to browsers.
-3. **Deploy automation generates** strong random auth token + VAPID keypair and writes secrets — user copies Worker URL (+ token into ETHOS Settings if not delivered via a one-time setup page on the Worker that shows token once). Prefer a setup UX that does not encourage pasting secrets into public READMEs.
+2. **Secrets only in the host secret store** (VAPID private key, auth token) — e.g. Cloudflare Secrets or equivalent env/secrets on other hosts. Never commit secrets; never ship private VAPID key to browsers.
+3. **Reference deploy automation generates** strong random auth token + VAPID keypair and writes secrets — user copies gateway URL (+ token into ETHOS Settings if not delivered via a one-time setup page that shows the token once). Prefer a setup UX that does not encourage pasting secrets into public READMEs. Alternate hosts should document the same “generate once, store as secrets” flow.
 4. **Endpoint host allowlist** — only known Web Push service hostnames (Apple, FCM, Mozilla, etc.). Precise hosts only; reject everything else (SSRF protection).
 5. **Subscription registration binding** — push only to endpoints previously registered under the same auth token after the client’s `PushManager.subscribe`. Unregistered endpoints → 403/404.
 6. **Payload limits** — max title/body/`data` size; strip/forbid HTML; plain text only.
@@ -168,12 +181,13 @@ Target operators: people who are **not** security experts. Defaults must be safe
 Document:
 
 1. Opt-in Settings fields and what each content/trigger mode means.
-2. One-click Cloudflare deploy for `push-gateway/`.
-3. Paste gateway URL (and token, if required by setup) into ETHOS.
-4. iPhone: use home-screen PWA for background delivery.
-5. Same pipeline for website widget and peer chats.
+2. One-click Cloudflare deploy for the **reference** `push-gateway/` Worker.
+3. That **any** HTTPS service implementing the same API can be used (paste its base URL + token).
+4. Paste gateway URL (and token, if required by setup) into ETHOS.
+5. iPhone: use home-screen PWA for background delivery.
+6. Same pipeline for website widget and peer chats.
 
-Do **not** center the docs on “this does not work without a server.” Center on **how to enable your own gateway**.
+Center docs on **how to enable your own gateway** (Cloudflare quick path + portable API).
 
 ## Testing
 
@@ -187,7 +201,7 @@ Do **not** center the docs on “this does not work without a server.” Center 
 - With opt-in + user Worker: background notification can wake iPhone PWA and deep-link to the right message.
 - With opt-in off: no gateway traffic; behavior remains local-only where applicable.
 - Widget and peer share one send helper.
-- Gateway is usable by non-experts without manual crypto, and is not an open relay by default.
+- Gateway is usable by non-experts without manual crypto (Cloudflare one-click), remains portable via the HTTP API, and is not an open relay by default.
 - English throughout user-facing surfaces.
 
 ## Implementation follow-up
