@@ -278,7 +278,7 @@ async function handlePush(
     );
     return json({ error: 'push_failed' }, 500);
   }
-
+}
 
 async function handleSetupPage(request: Request, env: Env): Promise<Response> {
   const gatewayUrl = new URL(request.url).origin;
