@@ -47,7 +47,7 @@ import {
   type PushTriggerMode,
 } from './lib/pushSettings';
 import { enablePushPipeline } from './lib/pushPipeline';
-import { sendViaPushGateway } from './lib/pushGatewayClient';
+import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
 import { parseChatDeepLink } from './lib/pushNotify';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
@@ -650,6 +650,17 @@ export default function App() {
     savePushSettings(next);
     setPushSettings(next);
     if (!next.enabled) {
+      const subscription = iroh.getPushSubscription()?.toJSON?.() ?? null;
+      const { gatewayUrl, authToken } = next;
+      iroh.clearPushGatewayPrefs();
+      if (
+        subscription?.endpoint &&
+        subscription.keys &&
+        isHttpsGatewayUrl(gatewayUrl) &&
+        authToken
+      ) {
+        void unregisterPushSubscription(gatewayUrl, authToken, subscription).catch(() => {});
+      }
       return;
     }
     setIsPushSaving(true);
@@ -721,6 +732,7 @@ export default function App() {
   const shouldAutoScrollRef = useRef(true);
   const jumpToMessageIdRef = useRef<string | null>(null);
   const pendingJumpNoticeRef = useRef(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageHistoryStoreRef = useRef(new IndexedDbMessageHistoryStore());
   const messageHistoryContextRef = useRef<{ identityMaterial: string; nodeId: string; lockSecret?: string } | null>(null);
@@ -958,6 +970,10 @@ export default function App() {
 
     requestAnimationFrame(() => {
       document.getElementById(`msg-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(targetId);
+      window.setTimeout(() => {
+        setHighlightedMessageId((current) => (current === targetId ? null : current));
+      }, 2200);
       if (jumpToMessageIdRef.current === targetId) {
         jumpToMessageIdRef.current = null;
         pendingJumpNoticeRef.current = false;
@@ -1815,7 +1831,8 @@ export default function App() {
                     id={`msg-${msg.id}`}
                     className={cn(
                       "flex gap-4 max-w-2xl group",
-                      msg.senderId === identity?.id ? "ml-auto flex-row-reverse" : ""
+                      msg.senderId === identity?.id ? "ml-auto flex-row-reverse" : "",
+                      highlightedMessageId === msg.id && "msg-deep-link-highlight"
                     )}
                   >
                     <div className={cn(

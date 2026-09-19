@@ -60,6 +60,30 @@ export async function registerPushSubscription(
   return res.ok;
 }
 
+export async function unregisterPushSubscription(
+  baseUrl: string,
+  authToken: string,
+  subscription: PushSubscriptionJSON,
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  const base = normalizeGatewayBaseUrl(baseUrl);
+  if (!isHttpsGatewayUrl(base)) {
+    return false;
+  }
+  if (!subscription.endpoint || !subscription.keys) {
+    return false;
+  }
+  const res = await fetchFn(`${base}/v1/subscriptions`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(subscriptionPayload(subscription)),
+  });
+  return res.ok;
+}
+
 export async function sendViaPushGateway(opts: {
   baseUrl: string;
   authToken: string;

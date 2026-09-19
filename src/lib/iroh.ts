@@ -524,16 +524,29 @@ export class IrohManager {
     this.pushTriggerMode = prefs.triggerMode;
   }
 
+  /** Clears advertised gateway prefs so handshakes stop sharing push fields. */
+  clearPushGatewayPrefs() {
+    this.pushGatewayUrl = null;
+    this.pushAuthToken = null;
+    this.pushSubscription = null;
+    this.pushEndpoint = null;
+    this.pushContentMode = 'Sender';
+    this.pushTriggerMode = 'Background only';
+  }
+
   getPeerPushProfile(peerId: string): PeerPushProfile | null {
     return this.peerPushProfiles.get(peerId) || null;
   }
 
-  private pushHandshakeFields() {
+  private pushHandshakeFields(): Record<string, unknown> {
+    if (!this.pushGatewayUrl || !this.pushAuthToken || !this.pushSubscription) {
+      return {};
+    }
     return {
       pushEndpoint: this.pushEndpoint,
       pushGatewayUrl: this.pushGatewayUrl,
       pushAuthToken: this.pushAuthToken,
-      pushSubscription: this.pushSubscription?.toJSON?.() ?? null,
+      pushSubscription: this.pushSubscription.toJSON?.() ?? null,
       pushContentMode: this.pushContentMode,
       pushTriggerMode: this.pushTriggerMode,
     };

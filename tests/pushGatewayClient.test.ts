@@ -3,6 +3,7 @@ import {
   normalizeGatewayBaseUrl,
   fetchVapidPublicKey,
   registerPushSubscription,
+  unregisterPushSubscription,
   sendViaPushGateway,
 } from '../src/lib/pushGatewayClient';
 
@@ -80,6 +81,36 @@ describe('registerPushSubscription', () => {
   it('rejects http base URL without calling fetch', async () => {
     const fetchFn = mockFetch(true, {});
     expect(await registerPushSubscription('http://bad', TOKEN, SUB, fetchFn)).toBe(false);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('unregisterPushSubscription', () => {
+  it('DELETEs subscription with Bearer token', async () => {
+    const fetchFn = mockFetch(true, {});
+    const ok = await unregisterPushSubscription(BASE, TOKEN, SUB, fetchFn);
+    expect(ok).toBe(true);
+    expect(fetchFn).toHaveBeenCalledWith(
+      `${BASE}/v1/subscriptions`,
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${TOKEN}`,
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ endpoint: SUB.endpoint, keys: SUB.keys }),
+      }),
+    );
+  });
+
+  it('returns false on non-OK response', async () => {
+    const fetchFn = mockFetch(false, {});
+    expect(await unregisterPushSubscription(BASE, TOKEN, SUB, fetchFn)).toBe(false);
+  });
+
+  it('rejects http base URL without calling fetch', async () => {
+    const fetchFn = mockFetch(true, {});
+    expect(await unregisterPushSubscription('http://bad', TOKEN, SUB, fetchFn)).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });

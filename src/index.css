@@ -26,3 +26,17 @@
 .terminal-scroll::-webkit-scrollbar-thumb {
   @apply bg-border rounded;
 }
+
+.msg-deep-link-highlight {
+  animation: msg-deep-link-pulse 1.8s ease-out 1;
+  border-radius: 0.75rem;
+}
+
+@keyframes msg-deep-link-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 255, 65, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(0, 255, 65, 0);
+  }
+}

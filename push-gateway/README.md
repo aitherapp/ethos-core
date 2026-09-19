@@ -13,7 +13,9 @@ It never stores chat message bodies. Defaults fail closed (no open relay).
 
 ## One-click deploy (Cloudflare)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/aitherapp/ethos/tree/main/push-gateway)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/aitherapp/ethos-core/tree/main/push-gateway)
+
+Until `push-gateway/` lands on `main`, prefer the Wrangler CLI steps below (or retarget the button at the feature branch that contains this folder).
 
 Or from this folder:
 

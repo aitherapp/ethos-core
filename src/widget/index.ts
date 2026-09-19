@@ -116,6 +116,16 @@ function resolveOwnerPushProfile(
         }).catch(() => {});
       };
 
+      // If handshake already advertised a complete push profile, sendMessage notifies
+      // (even when transport delivery returns null). Skip widget fallback to avoid double-send.
+      const handshakeBefore =
+        iroh.getPeerPushProfile(ownerTicket) || iroh.getPeerPushProfile(ownerPeerId);
+      const hadHandshakePush = Boolean(
+        handshakeBefore?.pushGatewayUrl &&
+          handshakeBefore.pushAuthToken &&
+          handshakeBefore.pushSubscription
+      );
+
       let sent: Awaited<ReturnType<typeof iroh.sendMessage>> = null;
       if (isInitialMessage) {
         const payload = createWidgetPayload(
@@ -131,8 +141,8 @@ function resolveOwnerPushProfile(
       }
 
       // Cover first-message / no-ratchet races when sendMessage returns early
-      // without running its gateway notify path. Prefer handshake profile once present.
-      if (!sent) {
+      // without running its gateway notify path.
+      if (!sent && !hadHandshakePush) {
         await notifyOwner();
       }
     };
