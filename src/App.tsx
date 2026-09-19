@@ -78,9 +78,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.87';
+const APP_VERSION = '3.1.88';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.88',
+    title: 'Secure VAPID Entropy & Private Peer Push',
+    date: '2026-09-19',
+    changes: [
+      'Replaced insecure Math.random VAPID fallback with crypto.getRandomValues.',
+      'Peer chat push only when offline, with a generic New message body so E2E plaintext never reaches the lock screen.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed canary.',
+    ],
+  },
   {
     version: '3.1.87',
     title: 'iOS APNs Web Push Exchange',
