@@ -55,12 +55,43 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ## Serverless OS Web Push Notifications (VAPID)
 
-ETHOS uses the W3C Web Push VAPID standard and Service Workers to deliver native background notifications to your operativsystem (macOS, Windows, Android, iOS PWA) when new messages or website widget chats arrive.
+ETHOS uses the W3C Web Push VAPID standard and a Service Worker to show native OS notifications when you are not actively using the app. **Widget visitor chats and peer-to-peer chats share the same opt-in push pipeline** — senders call **your** HTTPS push gateway; ETHOS does not run a shared push server for you.
 
-- **Zero Central Server:** Uses browser-vendor push portals (Apple APNs, Google FCM, Microsoft WNS). No central database or third-party server sees your messages.
-- **End-to-End Encrypted Payload:** Notification payloads are encrypted with Web Push RFC 8291 (AES-128-GCM) so push portals cannot inspect message text.
-- **Peer chat privacy:** Offline peer alerts use a generic body (`New message`) and never include E2E chat plaintext on the lock screen.
-- **Testing Notifications:** Open Settings (`Node Configuration`) in ETHOS and click **Test Push** to verify your browser and OS notification permissions.
+Delivery still goes through vendor push networks (Apple APNs, Google FCM, Microsoft WNS, and similar). Payloads use Web Push RFC 8291 encryption so those networks cannot read notification text.
+
+### Enable your own push gateway
+
+Background push is **off by default**. Turn it on when you want alerts while the ETHOS tab or PWA is in the background.
+
+1. **Deploy a gateway** (pick one path):
+   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`push-gateway/README.md`](push-gateway/README.md), or follow the `wrangler` steps there. After deploy, copy the Worker **HTTPS URL** and the **`AUTH_TOKEN`** from the setup script.
+   - **Any host:** Run any HTTPS service that implements the same ETHOS push-gateway HTTP API (`GET /v1/vapid-public-key`, subscription register/unregister, `POST /v1/push`). See [`push-gateway/README.md`](push-gateway/README.md) for the full route list and security defaults.
+2. **Open ETHOS → Settings** (top-right menu on mobile) and scroll to **OS Notifications**.
+3. Turn on **Enable background push**, paste **Gateway URL** and **Auth token**, choose **Content mode** and **Notify when**, then **Save Changes**. Saving registers this browser’s push subscription with your gateway.
+4. Allow notification permission when the browser asks.
+5. Tap **Test local notification** to confirm OS permissions, then **Test gateway push** (when enabled) to confirm end-to-end delivery through your gateway.
+
+### Settings fields
+
+| Field | Purpose |
+| :--- | :--- |
+| **Enable background push** | Opt-in switch; nothing is sent until this is on and settings are saved. |
+| **Gateway URL** | HTTPS base URL of your push gateway (no path suffix). |
+| **Auth token** | Bearer token your gateway expects (stored locally in the browser). |
+| **Content mode** | **Minimal** — title `ETHOS`, body `New message`. **Sender** — title includes sender name, generic body. **Preview** — sender name plus a short preview (up to ~80 characters). |
+| **Notify when** | **Background only** (default) — remote push when the recipient is not reachable on live transport. **Always** — also request push for each new message (respects gateway rate limits). |
+
+Your choices are shared with peers over the encrypted handshake so senders (including the embeddable widget) know which gateway URL and token to use when notifying you.
+
+### iPhone and iPad
+
+Add ETHOS to the **Home Screen** and open it from that icon. Web Push for installed PWAs is supported there; background alerts are unreliable if you only keep ETHOS in a regular Safari tab.
+
+### Verify and troubleshoot
+
+- **Test local notification** — browser/OS permission only.
+- **Test gateway push** — full path through your gateway and vendor push network.
+- If gateway tests fail, check HTTPS URL, token, and that you saved after enabling push (registration must succeed).
 
 ## How Connections Work
 
