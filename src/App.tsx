@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 // AnimatePresence types aren't re-exported from motion/react; import from framer-motion directly
 import { AnimatePresence } from 'framer-motion';
@@ -40,6 +40,7 @@ import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner'
 import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
 import { loadPushSettings } from './lib/pushSettings';
 import { enablePushPipeline } from './lib/pushPipeline';
+import { parseChatDeepLink } from './lib/pushNotify';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -642,6 +643,8 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const jumpToMessageIdRef = useRef<string | null>(null);
+  const pendingJumpNoticeRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageHistoryStoreRef = useRef(new IndexedDbMessageHistoryStore());
   const messageHistoryContextRef = useRef<{ identityMaterial: string; nodeId: string; lockSecret?: string } | null>(null);
@@ -809,9 +812,82 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (jumpToMessageIdRef.current) {
+      shouldAutoScrollRef.current = false;
+      return;
+    }
     shouldAutoScrollRef.current = true;
     scrollChatToBottom();
   }, [activePeer, activeGroup]);
+
+  const applyChatDeepLink = useCallback((peerId: string, messageId: string) => {
+    setActivePeer(peerId);
+    setActiveGroup(null);
+    setMobilePanel('chat');
+    jumpToMessageIdRef.current = messageId;
+    pendingJumpNoticeRef.current = false;
+    shouldAutoScrollRef.current = false;
+    if (!peers.includes(peerId)) {
+      iroh.notifyStatus('info', `Re-connecting to ${peerId.slice(0, 8)}...`);
+      iroh.connectByTicket(peerId);
+    }
+    const hash = `#/chat/${peerId}/${messageId}`;
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, '', hash);
+    }
+  }, [peers]);
+
+  useEffect(() => {
+    const fromHash = () => {
+      const parsed = parseChatDeepLink(window.location.hash);
+      if (parsed) applyChatDeepLink(parsed.peerId, parsed.messageId);
+    };
+    fromHash();
+
+    const onSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'ethos_notification_open') return;
+      const { peerId, messageId } = event.data as { peerId?: string; messageId?: string };
+      if (peerId && messageId) applyChatDeepLink(peerId, messageId);
+    };
+
+    window.addEventListener('hashchange', fromHash);
+    navigator.serviceWorker?.addEventListener('message', onSwMessage);
+    return () => {
+      window.removeEventListener('hashchange', fromHash);
+      navigator.serviceWorker?.removeEventListener('message', onSwMessage);
+    };
+  }, [applyChatDeepLink]);
+
+  useEffect(() => {
+    const targetId = jumpToMessageIdRef.current;
+    if (!targetId || !activePeer) return;
+
+    const inThread = messages.some(
+      (m) =>
+        m.id === targetId &&
+        !m.groupId &&
+        (m.senderId === activePeer || m.receiverId === activePeer)
+    );
+
+    if (!inThread) {
+      if (!pendingJumpNoticeRef.current) {
+        pendingJumpNoticeRef.current = true;
+        setStatus({
+          type: 'info',
+          message: 'Message not in history yet — will scroll when it arrives',
+        });
+      }
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      document.getElementById(`msg-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (jumpToMessageIdRef.current === targetId) {
+        jumpToMessageIdRef.current = null;
+        pendingJumpNoticeRef.current = false;
+      }
+    });
+  }, [messages, activePeer]);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
@@ -1660,6 +1736,7 @@ export default function App() {
                 }).map((msg) => (
                   <div 
                     key={msg.id}
+                    id={`msg-${msg.id}`}
                     className={cn(
                       "flex gap-4 max-w-2xl group",
                       msg.senderId === identity?.id ? "ml-auto flex-row-reverse" : ""

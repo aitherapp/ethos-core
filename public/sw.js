@@ -68,14 +68,22 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+  const data = event.notification.data || {};
+  const targetUrl = data.url || './';
+  event.waitUntil((async () => {
+    const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of all) {
+      if ('focus' in client) {
+        client.postMessage({
+          type: 'ethos_notification_open',
+          peerId: data.peerId,
+          messageId: data.messageId,
+        });
+        return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow('./');
-    })
-  );
+    }
+    if (clients.openWindow) return clients.openWindow(targetUrl);
+  })());
 });
 
 self.addEventListener('push', (event) => {

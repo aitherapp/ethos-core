@@ -37,3 +37,11 @@ export function buildNotificationData(opts: {
     url: `./#/chat/${peerId}/${messageId}`,
   };
 }
+
+const CHAT_DEEP_LINK = /^#\/chat\/([^/]+)\/([^/]+)$/;
+
+export function parseChatDeepLink(hash: string): { peerId: string; messageId: string } | null {
+  const match = CHAT_DEEP_LINK.exec(hash);
+  if (!match) return null;
+  return { peerId: match[1], messageId: match[2] };
+}
