@@ -19,6 +19,8 @@ import {
 } from './iceServers';
 import { normalizeGroupMembers } from './groups';
 import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMetadata, PeerMetadata, saveEncryptedGroups, saveEncryptedPeerMetadata } from './messageHistory';
+import { sendDirectWebPush } from '../widget/pushTrigger';
+import { peerPushCallArgs } from './peerPush';
 
 const CHUNK_SIZE = 16384;
 const MAX_PENDING_SIGNAL_PEERS = 64;
@@ -2115,6 +2117,20 @@ export class IrohManager {
     this.ratchetStates.set(peerId, state);
     
     const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
+    const pushArgs = peerPushCallArgs(
+      this.peerPushEndpoints.get(peerId),
+      this.identity?.displayName || 'ETHOS Peer',
+      Boolean(conn?.connected),
+      this.relayStatus.get(peerId) === 'connected'
+    );
+    if (pushArgs) {
+      sendDirectWebPush(
+        pushArgs.endpoint,
+        pushArgs.visitorId,
+        pushArgs.pagePath,
+        pushArgs.messageText
+      ).catch(() => {});
+    }
     if (conn?.connected) {
       conn.send(JSON.stringify({ ...msg, encrypted: true }));
     } else if (this.relayStatus.get(peerId) === 'connected') {
