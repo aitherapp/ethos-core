@@ -319,6 +319,13 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.93 – Mobile Composer & Toast Fixes (2026-09-20)
+- Status toasts auto-dismiss after a few seconds, dismiss on tap, and sit above the composer on phones so they do not cover Settings Save.
+- Push enable/test feedback stays in the Settings panel while Settings is open (no overlapping global toast).
+- Mobile chat bar keeps Send on-screen: ephemeral mode is icon-only on narrow viewports.
+- Notification deep-links highlight the target message once, clear the URL hash, and stop re-locking scroll to that message.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.92 – Push Settings Feedback & Gateway Fixes (2026-09-20)
 - Settings shows in-panel status for local/gateway push tests and surfaces upstream `502` / `upstream_failed` details.
 - Local notifications await the service worker and use absolute icon URLs (more reliable on Chrome/macOS).
