@@ -88,11 +88,23 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.88';
+const APP_VERSION = '3.1.89';
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.1.89',
+    title: 'Opt-in BYO Push Gateway',
+    date: '2026-09-19',
+    changes: [
+      'Added opt-in background push via your own HTTPS push gateway (Cloudflare one-click reference Worker or any compatible host).',
+      'Settings control notification content (Minimal / Sender / Preview) and when to notify (Background only / Always).',
+      'Notification clicks open the correct chat and message; widget and peer chats share the same push pipeline.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
     version: '3.1.88',
+
     title: 'Secure VAPID Entropy & Private Peer Push',
     date: '2026-09-19',
     changes: [

@@ -319,6 +319,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.89 – Opt-in BYO Push Gateway (2026-09-19)
+- Added opt-in background OS push via a user-owned HTTPS push gateway (Cloudflare Workers one-click reference in `push-gateway/`, or any host that implements the same API).
+- Settings: enable push, gateway URL, auth token, content mode (Minimal / Sender / Preview), and notify when (Background only / Always).
+- Widget and peer chats share one push pipeline; notification clicks deep-link to the correct conversation and message.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.88 – Secure VAPID Entropy & Private Peer Push (2026-09-19)
 - Replaced insecure `Math.random` VAPID fallback with `crypto.getRandomValues` (Code Scanning insecure-randomness).
 - Peer chat push notifies only when offline; body stays generic (`[chat] New message`) so E2E plaintext never reaches the OS notification.
