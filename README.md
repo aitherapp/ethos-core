@@ -59,6 +59,7 @@ ETHOS uses the W3C Web Push VAPID standard and Service Workers to deliver native
 
 - **Zero Central Server:** Uses browser-vendor push portals (Apple APNs, Google FCM, Microsoft WNS). No central database or third-party server sees your messages.
 - **End-to-End Encrypted Payload:** Notification payloads are encrypted with Web Push RFC 8291 (AES-128-GCM) so push portals cannot inspect message text.
+- **Peer chat privacy:** Offline peer alerts use a generic body (`New message`) and never include E2E chat plaintext on the lock screen.
 - **Testing Notifications:** Open Settings (`Node Configuration`) in ETHOS and click **Test Push** to verify your browser and OS notification permissions.
 
 ## How Connections Work
