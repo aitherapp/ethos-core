@@ -88,9 +88,20 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.91';
+const APP_VERSION = '3.1.92';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.92',
+    title: 'Push Settings Feedback & Gateway Fixes',
+    date: '2026-09-20',
+    changes: [
+      'Settings now shows in-panel status for local and gateway push tests, including upstream 502 details from the push gateway.',
+      'Local notifications await the service worker and use absolute icon URLs for more reliable Chrome/macOS delivery.',
+      'Push gateway one-click defaults include a valid VAPID subject for Chrome/FCM; use a new project name when re-running Deploy to Cloudflare.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.91',
     title: 'One-Click Push Gateway Setup',

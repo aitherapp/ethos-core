@@ -319,6 +319,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.92 – Push Settings Feedback & Gateway Fixes (2026-09-20)
+- Settings shows in-panel status for local/gateway push tests and surfaces upstream `502` / `upstream_failed` details.
+- Local notifications await the service worker and use absolute icon URLs (more reliable on Chrome/macOS).
+- Push gateway one-click ships a valid default `VAPID_SUBJECT` for Chrome/FCM; pick a **new** project name if re-running Deploy to Cloudflare.
+- Refreshed app and service-worker cache versions; weekly warrant canary dates updated.
+
 ### v3.1.91 – One-Click Push Gateway Setup (2026-09-19)
 - After Cloudflare one-click deploy, open the Worker HTTPS URL to copy the gateway URL and auth token from the English setup page (token shown once).
 - Default path needs no Wrangler or `generate-secrets`; CLI secrets remain under Advanced in [`push-gateway/README.md`](push-gateway/README.md).
