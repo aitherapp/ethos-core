@@ -87,7 +87,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'New Message', body: 'You received a new E2EE message in ETHOS.' };
+  let data = { title: 'New Message', body: 'You received a new E2EE message in ETHOS.', data: { url: './' } };
   if (event.data) {
     try {
       data = event.data.json();
@@ -96,10 +96,11 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  const icon = new URL('./ethos-icon.svg', self.registration.scope).href;
   const options = {
     body: data.body || 'New message in ETHOS',
-    icon: './ethos-icon.svg',
-    badge: './ethos-icon.svg',
+    icon,
+    badge: icon,
     data: data.data || { url: './' },
   };
 

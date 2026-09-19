@@ -83,7 +83,7 @@ export async function notifyPeerViaGateway(
     opts.previewText
   );
 
-  return sendViaPushGateway({
+  const result = await sendViaPushGateway({
     baseUrl: profile.pushGatewayUrl,
     authToken: profile.pushAuthToken,
     subscription: profile.pushSubscription,
@@ -92,4 +92,5 @@ export async function notifyPeerViaGateway(
     data: buildNotificationData({ peerId: opts.localPeerId, messageId: opts.messageId }),
     fetchFn: opts.fetchFn,
   });
+  return result.ok;
 }

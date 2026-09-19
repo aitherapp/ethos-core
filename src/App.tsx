@@ -641,6 +641,7 @@ export default function App() {
   const [pushSettings, setPushSettings] = useState<PushSettings>(() => loadPushSettings());
   const [isPushSaving, setIsPushSaving] = useState(false);
   const [isGatewayTesting, setIsGatewayTesting] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState<{ type: 'info' | 'warning' | 'error'; message: string } | null>(null);
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
@@ -677,7 +678,12 @@ export default function App() {
     setPkarrEnabledState(next);
   };
 
-  const persistPushSettings = async (next: PushSettings) => {
+  const reportPushFeedback = (type: 'info' | 'warning' | 'error', message: string) => {
+    setPushFeedback({ type, message });
+    setStatus({ type, message });
+  };
+
+  const persistPushSettings = async (next: PushSettings): Promise<boolean> => {
     savePushSettings(next);
     setPushSettings(next);
     if (!next.enabled) {
@@ -692,19 +698,27 @@ export default function App() {
       ) {
         void unregisterPushSubscription(gatewayUrl, authToken, subscription).catch(() => {});
       }
-      return;
+      setPushFeedback(null);
+      return true;
+    }
+    if (!next.authToken.trim()) {
+      reportPushFeedback('warning', 'Auth token is empty. Paste the token from your Worker setup page, then save again.');
+      return false;
     }
     setIsPushSaving(true);
     try {
       const ok = await enablePushPipeline(next);
       if (ok) {
-        setStatus({ type: 'info', message: 'Background push enabled and registered with your gateway.' });
-      } else {
-        setStatus({
-          type: 'warning',
-          message: 'Could not enable background push. Check HTTPS gateway URL, auth token, and notification permission.',
-        });
+        reportPushFeedback('info', 'Background push enabled and registered with your gateway.');
+        return true;
       }
+      const permission =
+        typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+      reportPushFeedback(
+        'warning',
+        `Could not enable background push (notification permission: ${permission}). Check HTTPS gateway URL, auth token, and browser notification permission.`,
+      );
+      return false;
     } finally {
       setIsPushSaving(false);
     }
@@ -717,7 +731,11 @@ export default function App() {
 
   const handleTestGatewayPush = async () => {
     if (!pushSettings.enabled || !isHttpsGatewayUrl(pushSettings.gatewayUrl)) {
-      setStatus({ type: 'warning', message: 'Enable background push with a valid HTTPS gateway URL first.' });
+      reportPushFeedback('warning', 'Enable background push with a valid HTTPS gateway URL first.');
+      return;
+    }
+    if (!pushSettings.authToken.trim()) {
+      reportPushFeedback('warning', 'Auth token is empty. Paste the token from your Worker setup page, then Save Changes.');
       return;
     }
     setIsGatewayTesting(true);
@@ -726,16 +744,16 @@ export default function App() {
       if (!subscription) {
         const ok = await enablePushPipeline(pushSettings);
         if (!ok) {
-          setStatus({ type: 'warning', message: 'Gateway registration failed before test push.' });
+          reportPushFeedback('warning', 'Gateway registration failed before test push. Save Changes again after allowing notifications.');
           return;
         }
         subscription = iroh.getPushSubscription();
       }
       if (!subscription) {
-        setStatus({ type: 'warning', message: 'No push subscription available for gateway test.' });
+        reportPushFeedback('warning', 'No push subscription available for gateway test.');
         return;
       }
-      const ok = await sendViaPushGateway({
+      const result = await sendViaPushGateway({
         baseUrl: pushSettings.gatewayUrl,
         authToken: pushSettings.authToken,
         subscription: subscription.toJSON(),
@@ -743,10 +761,18 @@ export default function App() {
         body: 'Gateway test notification',
         data: { peerId: identity?.id ?? '', messageId: `test-${Date.now()}` },
       });
-      if (ok) {
-        setStatus({ type: 'info', message: 'Test gateway push sent. Check your OS Notification Center.' });
+      if (result.ok === true) {
+        reportPushFeedback('info', 'Test gateway push sent. Check your OS Notification Center.');
+      } else if (result.error === 'upstream_failed') {
+        reportPushFeedback(
+          'warning',
+          `Gateway reached Chrome/FCM but upstream rejected the push (HTTP ${result.upstreamStatus ?? '?'}). Click Save Changes to re-subscribe with the current VAPID key, then retry. If you rotated the gateway, re-copy the auth token too.`,
+        );
       } else {
-        setStatus({ type: 'warning', message: 'Gateway rejected the test push. Check URL, token, and registration.' });
+        reportPushFeedback(
+          'warning',
+          `Gateway rejected the test push (${result.status}${result.error ? `: ${result.error}` : ''}). Save Changes once, then retry.`,
+        );
       }
     } finally {
       setIsGatewayTesting(false);
@@ -2626,11 +2652,28 @@ export default function App() {
                         const res = await sendLocalNotification('ETHOS Test Notification', {
                           body: 'Local OS notifications are active on your device!',
                         });
-                        if (res === null && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-                          setStatus({ type: 'warning', message: 'Notification permission blocked in browser/OS settings' });
-                        } else {
-                          setStatus({ type: 'info', message: 'Test local notification sent! Check your OS Notification Center.' });
+                        if (res.ok === false) {
+                          if (res.reason === 'denied') {
+                            reportPushFeedback(
+                              'warning',
+                              `Chrome site permission is "${res.detail ?? 'denied'}". Allow Notifications for this ETHOS site (lock icon in the address bar), then also allow Google Chrome in macOS System Settings → Notifications.`,
+                            );
+                            return;
+                          }
+                          if (res.reason === 'unsupported') {
+                            reportPushFeedback('warning', 'This browser does not support OS notifications.');
+                            return;
+                          }
+                          reportPushFeedback(
+                            'warning',
+                            `Could not show a local notification${res.detail ? `: ${res.detail}` : ''}. Check macOS System Settings → Notifications → Google Chrome (Allow + Banners).`,
+                          );
+                          return;
                         }
+                        reportPushFeedback(
+                          'info',
+                          `Local notification shown via ${res.via}. If you still see nothing, open Notification Center and set Google Chrome banners in macOS Settings.`,
+                        );
                       }}
                       className="px-3 py-1.5 rounded bg-brand/10 border border-brand/20 text-brand text-[10px] font-bold uppercase hover:bg-brand/20 transition-colors"
                     >
@@ -2647,6 +2690,20 @@ export default function App() {
                       </button>
                     )}
                   </div>
+                  {pushFeedback && (
+                    <p
+                      className={cn(
+                        'text-[10px] font-mono leading-relaxed rounded px-2 py-2 border',
+                        pushFeedback.type === 'error'
+                          ? 'border-red-500/30 text-red-400 bg-red-500/5'
+                          : pushFeedback.type === 'warning'
+                            ? 'border-orange-500/30 text-orange-400 bg-orange-500/5'
+                            : 'border-brand/30 text-brand bg-brand/5',
+                      )}
+                    >
+                      {pushFeedback.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -2976,12 +3033,17 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => {
-                        iroh.setDisplayName(tempName);
-                        iroh.updateRelays(relays);
-                        iroh.updateIceServers(iceServers);
-                        setIdentity(iroh.getIdentity());
-                        void persistPushSettings(pushSettings);
-                        setShowSettings(false);
+                        void (async () => {
+                          iroh.setDisplayName(tempName);
+                          iroh.updateRelays(relays);
+                          iroh.updateIceServers(iceServers);
+                          setIdentity(iroh.getIdentity());
+                          const pushOk = await persistPushSettings(pushSettings);
+                          // Keep Settings open when push enable fails so in-panel feedback stays visible.
+                          if (pushOk || !pushSettings.enabled) {
+                            setShowSettings(false);
+                          }
+                        })();
                       }}
                       className="bg-brand text-black px-6 py-2 rounded text-[10px] uppercase font-bold hover:opacity-90 transition-opacity"
                     >

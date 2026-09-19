@@ -14,9 +14,10 @@ const SUB: PushSubscriptionJSON = {
   keys: { p256dh: 'p256', auth: 'auth' },
 };
 
-function mockFetch(ok: boolean, body: unknown): typeof fetch {
+function mockFetch(ok: boolean, body: unknown, status = ok ? 200 : 500): typeof fetch {
   return vi.fn(async () => ({
     ok,
+    status,
     json: async () => body,
     text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
   })) as unknown as typeof fetch;
@@ -119,7 +120,7 @@ describe('sendViaPushGateway', () => {
   it('POSTs push payload with Bearer token', async () => {
     const fetchFn = mockFetch(true, {});
     const data = { peerId: 'p1', messageId: 'm1', url: './#/chat/p1/m1' };
-    const ok = await sendViaPushGateway({
+    const result = await sendViaPushGateway({
       baseUrl: BASE,
       authToken: TOKEN,
       subscription: SUB,
@@ -128,7 +129,7 @@ describe('sendViaPushGateway', () => {
       data,
       fetchFn,
     });
-    expect(ok).toBe(true);
+    expect(result).toEqual({ ok: true });
     expect(fetchFn).toHaveBeenCalledWith(
       `${BASE}/v1/push`,
       expect.objectContaining({
@@ -145,9 +146,9 @@ describe('sendViaPushGateway', () => {
     );
   });
 
-  it('returns false on non-OK response', async () => {
-    const fetchFn = mockFetch(false, {});
-    const ok = await sendViaPushGateway({
+  it('returns upstream details on non-OK JSON response', async () => {
+    const fetchFn = mockFetch(false, { error: 'upstream_failed', status: 403 });
+    const result = await sendViaPushGateway({
       baseUrl: BASE,
       authToken: TOKEN,
       subscription: SUB,
@@ -156,12 +157,17 @@ describe('sendViaPushGateway', () => {
       data: {},
       fetchFn,
     });
-    expect(ok).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      status: 500,
+      error: 'upstream_failed',
+      upstreamStatus: 403,
+    });
   });
 
   it('rejects http base URL without calling fetch', async () => {
     const fetchFn = mockFetch(true, {});
-    const ok = await sendViaPushGateway({
+    const result = await sendViaPushGateway({
       baseUrl: 'http://bad',
       authToken: TOKEN,
       subscription: SUB,
@@ -170,7 +176,7 @@ describe('sendViaPushGateway', () => {
       data: {},
       fetchFn,
     });
-    expect(ok).toBe(false);
+    expect(result.ok).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
