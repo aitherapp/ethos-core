@@ -23,5 +23,6 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["push-gateway", "node_modules", "dist", "tests/pushGatewayAllowlist.test.ts"]
 }

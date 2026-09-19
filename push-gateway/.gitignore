@@ -1,0 +1,5 @@
+# Local Worker dev / build artifacts (paths relative to push-gateway/)
+node_modules/
+.wrangler/
+.dev.vars
+dist/

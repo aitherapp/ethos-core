@@ -1,8 +1,42 @@
 import { iroh } from '../lib/iroh';
 import { parseWidgetConfig, generateVisitorId, createWidgetPayload } from './widgetCore';
 import { createWidgetDOM } from './widgetUI';
-import { sendDirectWebPush } from './pushTrigger';
+import { notifyPeerViaGateway, type NotifyPushProfile } from '../lib/peerPush';
 import { SecureMessage } from '../types';
+import type { PushContentMode, PushTriggerMode } from '../lib/pushSettings';
+
+function resolveOwnerPushProfile(
+  script: HTMLScriptElement,
+  ownerTicket: string,
+  ownerPeerId: string
+): NotifyPushProfile | null {
+  const handshake =
+    iroh.getPeerPushProfile(ownerTicket) ||
+    iroh.getPeerPushProfile(ownerPeerId);
+
+  const attrGateway = script.getAttribute('data-push-gateway-url');
+  const attrToken = script.getAttribute('data-push-auth-token');
+
+  if (handshake?.pushGatewayUrl && handshake.pushAuthToken && handshake.pushSubscription) {
+    return handshake;
+  }
+
+  // Optional English-documented bootstrap for first-message races before handshake profile arrives.
+  const pushGatewayUrl = handshake?.pushGatewayUrl || attrGateway;
+  const pushAuthToken = handshake?.pushAuthToken || attrToken;
+  const pushSubscription = handshake?.pushSubscription ?? null;
+  if (!pushGatewayUrl || !pushAuthToken || !pushSubscription) {
+    return null;
+  }
+
+  return {
+    pushGatewayUrl,
+    pushAuthToken,
+    pushSubscription,
+    pushContentMode: (handshake?.pushContentMode ?? 'Sender') as PushContentMode,
+    pushTriggerMode: (handshake?.pushTriggerMode ?? 'Background only') as PushTriggerMode,
+  };
+}
 
 (async function initEthosWidget() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -67,10 +101,32 @@ import { SecureMessage } from '../types';
 
       ui.inputField.value = '';
 
-      // Send Web Push notification if endpoint is available
-      const pushEndpoint = currentScript.getAttribute('data-push-endpoint') || iroh.getPushEndpoint(ownerTicket) || iroh.getPushEndpoint(ownerPeerId);
-      sendDirectWebPush(pushEndpoint, visitorId, window.location.pathname || '/', text).catch(() => {});
+      const notifyOwner = () => {
+        const ownerProfile = resolveOwnerPushProfile(currentScript, ownerTicket, ownerPeerId);
+        const transport =
+          iroh.getPeerTransportStatus(ownerTicket) ||
+          iroh.getPeerTransportStatus(ownerPeerId);
+        return notifyPeerViaGateway(ownerProfile, {
+          senderName: visitorId,
+          previewText: text,
+          localPeerId: iroh.getIdentity()?.id || visitorId,
+          messageId: `widget-${Date.now()}`,
+          directConnected: transport?.mode === 'direct',
+          relayConnected: transport?.mode === 'relay',
+        }).catch(() => {});
+      };
 
+      // If handshake already advertised a complete push profile, sendMessage notifies
+      // (even when transport delivery returns null). Skip widget fallback to avoid double-send.
+      const handshakeBefore =
+        iroh.getPeerPushProfile(ownerTicket) || iroh.getPeerPushProfile(ownerPeerId);
+      const hadHandshakePush = Boolean(
+        handshakeBefore?.pushGatewayUrl &&
+          handshakeBefore.pushAuthToken &&
+          handshakeBefore.pushSubscription
+      );
+
+      let sent: Awaited<ReturnType<typeof iroh.sendMessage>> = null;
       if (isInitialMessage) {
         const payload = createWidgetPayload(
           visitorId,
@@ -78,10 +134,16 @@ import { SecureMessage } from '../types';
           document.referrer || '',
           text
         );
-        await iroh.sendMessage(ownerTicket, JSON.stringify(payload));
+        sent = await iroh.sendMessage(ownerTicket, JSON.stringify(payload));
         isInitialMessage = false;
       } else {
-        await iroh.sendMessage(ownerTicket, text);
+        sent = await iroh.sendMessage(ownerTicket, text);
+      }
+
+      // Cover first-message / no-ratchet races when sendMessage returns early
+      // without running its gateway notify path.
+      if (!sent && !hadHandshakePush) {
+        await notifyOwner();
       }
     };
 

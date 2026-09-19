@@ -1,30 +1,35 @@
+import { notifyPeerViaGateway, type NotifyPushProfile } from '../lib/peerPush';
+
+function isNotifyPushProfile(value: unknown): value is NotifyPushProfile {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * @deprecated Prefer `notifyPeerViaGateway`. Legacy vendor POSTs are removed;
+ * this wrapper only forwards when a gateway profile is present.
+ */
 export async function sendDirectWebPush(
-  pushEndpoint: string | null,
+  profile: NotifyPushProfile | null,
   visitorId: string,
-  pagePath: string,
+  _pagePath: string,
   messageText: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  extras: {
+    localPeerId?: string;
+    messageId?: string;
+    directConnected?: boolean;
+    relayConnected?: boolean;
+  } = {}
 ): Promise<boolean> {
-  if (!pushEndpoint) return false;
+  if (!isNotifyPushProfile(profile)) return false;
 
-  try {
-    const payload = JSON.stringify({
-      title: `New chat from ${visitorId}`,
-      body: `[${pagePath}] ${messageText.slice(0, 100)}`,
-    });
-
-    const res = await fetchFn(pushEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'TTL': '86400',
-      },
-      body: payload,
-    });
-
-    return res.ok || res.status === 201 || res.status === 202;
-  } catch (err) {
-    console.warn('[Widget Push] Direct push send failed:', err);
-    return false;
-  }
+  return notifyPeerViaGateway(profile, {
+    senderName: visitorId,
+    previewText: messageText,
+    localPeerId: extras.localPeerId ?? 'widget',
+    messageId: extras.messageId ?? `widget-${Date.now()}`,
+    directConnected: extras.directConnected ?? false,
+    relayConnected: extras.relayConnected ?? false,
+    fetchFn,
+  });
 }
