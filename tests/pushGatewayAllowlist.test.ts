@@ -7,6 +7,8 @@ import {
   validatePushPayload,
   MAX_TITLE_LEN,
   MAX_BODY_LEN,
+  MAX_NOTIFICATION_DATA_JSON_LEN,
+  notificationDataJsonLength,
 } from '../push-gateway/src/subscriptions';
 
 describe('push endpoint allowlist', () => {
@@ -99,5 +101,23 @@ describe('subscription / push payload helpers', () => {
       notification: { title: 'ok', body: 'y'.repeat(MAX_BODY_LEN + 1) },
     });
     expect(longBody.ok).toBe(false);
+  });
+
+  it('caps notification.data serialized size', () => {
+    expect(notificationDataJsonLength(undefined)).toBe(0);
+    expect(notificationDataJsonLength({ messageId: '1' })).toBeLessThanOrEqual(
+      MAX_NOTIFICATION_DATA_JSON_LEN,
+    );
+
+    const huge = { blob: 'x'.repeat(MAX_NOTIFICATION_DATA_JSON_LEN) };
+    expect(notificationDataJsonLength(huge)).toBeGreaterThan(MAX_NOTIFICATION_DATA_JSON_LEN);
+
+    const rejected = validatePushPayload({
+      endpoint: 'https://web.push.apple.com/foo',
+      keys: { p256dh: 'p', auth: 'a' },
+      notification: { title: 'ok', body: 'ok', data: huge },
+    });
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) expect(rejected.error).toBe('payload_too_large');
   });
 });

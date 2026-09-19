@@ -9,6 +9,7 @@ import {
   MAX_PUSHES_PER_MINUTE,
   MAX_SUBSCRIPTIONS_PER_TOKEN,
   SUBSCRIPTION_TTL_SECONDS,
+  endpointRateLimitKey,
   rateLimitKey,
   subscriptionIndexKey,
   subscriptionKvKey,
@@ -107,10 +108,10 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 
   if (!already) {
     index.push(key);
-    await env.SUBSCRIPTIONS.put(indexKey, JSON.stringify(index), {
-      expirationTtl: SUBSCRIPTION_TTL_SECONDS,
-    });
   }
+  await env.SUBSCRIPTIONS.put(indexKey, JSON.stringify(index), {
+    expirationTtl: SUBSCRIPTION_TTL_SECONDS,
+  });
 
   return json({ ok: true }, 200);
 }
@@ -150,15 +151,24 @@ async function handleUnregister(request: Request, env: Env): Promise<Response> {
   return json({ ok: true }, 200);
 }
 
-async function checkRateLimit(env: Env): Promise<Response | null> {
-  const windowMinute = Math.floor(Date.now() / 60_000);
-  const key = await rateLimitKey(env.AUTH_TOKEN, windowMinute);
+async function chargeRateLimitBucket(env: Env, key: string): Promise<Response | null> {
   const currentRaw = await env.SUBSCRIPTIONS.get(key);
   const current = currentRaw ? Number.parseInt(currentRaw, 10) || 0 : 0;
   if (current >= MAX_PUSHES_PER_MINUTE) {
     return json({ error: 'rate_limited' }, 429);
   }
   await env.SUBSCRIPTIONS.put(key, String(current + 1), { expirationTtl: 120 });
+  return null;
+}
+
+async function checkRateLimits(env: Env, endpoint: string): Promise<Response | null> {
+  const windowMinute = Math.floor(Date.now() / 60_000);
+  const tokenKey = await rateLimitKey(env.AUTH_TOKEN, windowMinute);
+  const endpointKey = await endpointRateLimitKey(env.AUTH_TOKEN, endpoint, windowMinute);
+  for (const key of [tokenKey, endpointKey]) {
+    const limited = await chargeRateLimitBucket(env, key);
+    if (limited) return limited;
+  }
   return null;
 }
 
@@ -169,9 +179,6 @@ async function handlePush(request: Request, env: Env): Promise<Response> {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
     return json({ error: 'misconfigured' }, 503);
   }
-
-  const limited = await checkRateLimit(env);
-  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -184,6 +191,9 @@ async function handlePush(request: Request, env: Env): Promise<Response> {
   if (!validated.ok) {
     return json({ error: validated.error }, 400);
   }
+
+  const limited = await checkRateLimits(env, validated.endpoint);
+  if (limited) return limited;
 
   const key = await subscriptionKvKey(env.AUTH_TOKEN, validated.endpoint);
   const registered = await env.SUBSCRIPTIONS.get(key);

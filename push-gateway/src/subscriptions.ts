@@ -2,6 +2,8 @@ import { isAllowedPushEndpointHost } from './allowlist';
 
 export const MAX_TITLE_LEN = 100;
 export const MAX_BODY_LEN = 200;
+/** Max serialized JSON length for notification.data (bytes / UTF-16 code units). */
+export const MAX_NOTIFICATION_DATA_JSON_LEN = 2048;
 export const MAX_SUBSCRIPTIONS_PER_TOKEN = 20;
 /** Subscription TTL in seconds (180 days). */
 export const SUBSCRIPTION_TTL_SECONDS = 180 * 24 * 60 * 60;
@@ -59,6 +61,28 @@ export async function rateLimitKey(authToken: string, windowMinute: number): Pro
   return `rl:${toHex(tokenDigest).slice(0, 16)}:${windowMinute}`;
 }
 
+/** Per registered endpoint (same token namespace), same window as token rate limit. */
+export async function endpointRateLimitKey(
+  authToken: string,
+  endpoint: string,
+  windowMinute: number,
+): Promise<string> {
+  const enc = new TextEncoder();
+  const tokenDigest = await crypto.subtle.digest('SHA-256', enc.encode(authToken));
+  const endpointDigest = await crypto.subtle.digest('SHA-256', enc.encode(endpoint));
+  return `rle:${toHex(tokenDigest).slice(0, 16)}:${toHex(endpointDigest).slice(0, 16)}:${windowMinute}`;
+}
+
+/** Returns JSON.stringify length for data cap checks; non-serializable → Infinity. */
+export function notificationDataJsonLength(data: unknown): number {
+  if (data === undefined) return 0;
+  try {
+    return JSON.stringify(data).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
 export function validateSubscriptionPayload(body: unknown): ValidationResult {
   if (!body || typeof body !== 'object') {
     return { ok: false, error: 'invalid_body' };
@@ -114,6 +138,9 @@ export function validatePushPayload(body: unknown): PushValidationResult {
   // Plain text only — reject obvious HTML markup in title/body
   if (/[<>]/.test(n.title) || /[<>]/.test(n.body)) {
     return { ok: false, error: 'html_not_allowed' };
+  }
+  if (notificationDataJsonLength(n.data) > MAX_NOTIFICATION_DATA_JSON_LEN) {
+    return { ok: false, error: 'payload_too_large' };
   }
 
   return {
