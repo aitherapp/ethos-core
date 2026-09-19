@@ -65,13 +65,20 @@ export async function getOrCreateVapidPublicKey(): Promise<string> {
   return key;
 }
 
-export async function subscribeToWebPush(publicKeyBase64: string): Promise<PushSubscription | null> {
+export async function subscribeToWebPush(
+  publicKeyBase64: string,
+  opts: { replaceExisting?: boolean } = {},
+): Promise<PushSubscription | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return null;
   }
   try {
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
+    if (subscription && opts.replaceExisting) {
+      await subscription.unsubscribe();
+      subscription = null;
+    }
     if (!subscription) {
       const applicationServerKey = urlBase64ToUint8Array(publicKeyBase64);
       subscription = await registration.pushManager.subscribe({

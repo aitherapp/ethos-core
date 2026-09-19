@@ -21,6 +21,16 @@ import { normalizeGroupMembers } from './groups';
 import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMetadata, PeerMetadata, saveEncryptedGroups, saveEncryptedPeerMetadata } from './messageHistory';
 import { sendDirectWebPush } from '../widget/pushTrigger';
 import { peerPushCallArgs } from './peerPush';
+import type { PushContentMode, PushTriggerMode } from './pushSettings';
+
+export interface PeerPushProfile {
+  pushGatewayUrl: string | null;
+  pushAuthToken: string | null;
+  pushSubscription: PushSubscriptionJSON | null;
+  pushContentMode: PushContentMode;
+  pushTriggerMode: PushTriggerMode;
+  pushEndpoint: string | null;
+}
 
 const CHUNK_SIZE = 16384;
 const MAX_PENDING_SIGNAL_PEERS = 64;
@@ -488,17 +498,82 @@ export class IrohManager {
   private peerPks: Map<string, { classical: string; pqc: string }> = new Map();
   private peerMetadata: Map<string, { displayName: string }> = new Map();
   private pushSubscription: PushSubscription | null = null;
+  private pushGatewayUrl: string | null = null;
+  private pushAuthToken: string | null = null;
+  private pushContentMode: PushContentMode = 'Sender';
+  private pushTriggerMode: PushTriggerMode = 'Background only';
+  private peerPushProfiles: Map<string, PeerPushProfile> = new Map();
 
   setPushSubscription(subscription: PushSubscription | null) {
     this.pushSubscription = subscription;
-    if (subscription?.endpoint) {
-      this.pushEndpoint = subscription.endpoint;
-    }
+    this.pushEndpoint = subscription?.endpoint ?? null;
   }
 
   getPushSubscription() {
     return this.pushSubscription;
   }
+
+  applyPushGatewayPrefs(prefs: {
+    gatewayUrl: string;
+    authToken: string;
+    contentMode: PushContentMode;
+    triggerMode: PushTriggerMode;
+  }) {
+    this.pushGatewayUrl = prefs.gatewayUrl;
+    this.pushAuthToken = prefs.authToken;
+    this.pushContentMode = prefs.contentMode;
+    this.pushTriggerMode = prefs.triggerMode;
+  }
+
+  getPeerPushProfile(peerId: string): PeerPushProfile | null {
+    return this.peerPushProfiles.get(peerId) || null;
+  }
+
+  private pushHandshakeFields() {
+    return {
+      pushEndpoint: this.pushEndpoint,
+      pushGatewayUrl: this.pushGatewayUrl,
+      pushAuthToken: this.pushAuthToken,
+      pushSubscription: this.pushSubscription?.toJSON?.() ?? null,
+      pushContentMode: this.pushContentMode,
+      pushTriggerMode: this.pushTriggerMode,
+    };
+  }
+
+  private storePeerPushFromSignal(peerId: string, signal: {
+    pushEndpoint?: string | null;
+    pushGatewayUrl?: string | null;
+    pushAuthToken?: string | null;
+    pushSubscription?: PushSubscriptionJSON | null;
+    pushContentMode?: PushContentMode;
+    pushTriggerMode?: PushTriggerMode;
+  }) {
+    if (signal.pushEndpoint) {
+      this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
+    }
+    const endpoint =
+      signal.pushEndpoint ??
+      signal.pushSubscription?.endpoint ??
+      null;
+    if (
+      signal.pushGatewayUrl ||
+      signal.pushAuthToken ||
+      signal.pushSubscription ||
+      signal.pushContentMode ||
+      signal.pushTriggerMode ||
+      signal.pushEndpoint
+    ) {
+      this.peerPushProfiles.set(peerId, {
+        pushGatewayUrl: signal.pushGatewayUrl ?? null,
+        pushAuthToken: signal.pushAuthToken ?? null,
+        pushSubscription: signal.pushSubscription ?? null,
+        pushContentMode: signal.pushContentMode ?? 'Sender',
+        pushTriggerMode: signal.pushTriggerMode ?? 'Background only',
+        pushEndpoint: endpoint,
+      });
+    }
+  }
+
   private pushEndpoint: string | null = null;
   private peerPushEndpoints: Map<string, string> = new Map();
   private peerMetadataStore = new IndexedDbMessageHistoryStore();
@@ -861,7 +936,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcPublicKey: this.identity.pqcPublicKey,
         displayName: this.identity.displayName,
-        pushEndpoint: this.pushEndpoint,
+        ...this.pushHandshakeFields(),
       });
       return;
     }
@@ -887,6 +962,7 @@ export class IrohManager {
       classicalPublicKey: this.identity.classicalPublicKey,
       pqcPublicKey: this.identity.pqcPublicKey,
       displayName: this.identity.displayName,
+      ...this.pushHandshakeFields(),
     });
   }
 
@@ -925,9 +1001,7 @@ export class IrohManager {
         this.persistMetadata();
       }
 
-      if (signal.pushEndpoint) {
-        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
-      }
+      this.storePeerPushFromSignal(peerId, signal);
 
       const ack = {
         senderId: this.currentPeerId,
@@ -936,7 +1010,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcCiphertext: ciphertext,
         displayName: this.identity.displayName,
-        pushEndpoint: this.pushEndpoint,
+        ...this.pushHandshakeFields(),
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
@@ -981,9 +1055,7 @@ export class IrohManager {
         this.persistMetadata();
       }
 
-      if (signal.pushEndpoint) {
-        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
-      }
+      this.storePeerPushFromSignal(peerId, signal);
 
       this.sendNostrSignal(peerId, {
         senderId: this.currentPeerId,

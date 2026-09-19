@@ -38,7 +38,8 @@ import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discove
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
 import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
 import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
-import { getOrCreateVapidPublicKey, subscribeToWebPush } from './lib/webPush';
+import { loadPushSettings } from './lib/pushSettings';
+import { enablePushPipeline } from './lib/pushPipeline';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -711,9 +712,10 @@ export default function App() {
 
   useEffect(() => {
     requestNotificationPermission().then(() => {
-      getOrCreateVapidPublicKey().then(vapidKey => {
-        subscribeToWebPush(vapidKey).catch(() => {});
-      });
+      const settings = loadPushSettings();
+      if (settings.enabled) {
+        enablePushPipeline(settings).catch(() => {});
+      }
     }).catch(() => {});
 
     return diagnosticsLog.subscribe(() => {
