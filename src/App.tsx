@@ -88,17 +88,26 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.90';
+const APP_VERSION = '3.1.91';
 
 const ABOUT_CHANGELOG = [
   {
-    version: '3.1.90',
+    version: '3.1.91',
     title: 'One-Click Push Gateway Setup',
     date: '2026-09-19',
     changes: [
       'After Cloudflare one-click deploy, open your Worker URL to copy the gateway URL and auth token from an English setup page (shown once).',
       'No Wrangler or secret scripts required for the default path; CLI secret generation remains available as Advanced.',
+      'CI installs push-gateway dependencies so gateway setup tests run in deploy workflows.',
       'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.90',
+    title: 'One-Click Push Gateway Setup (build)',
+    date: '2026-09-19',
+    changes: [
+      'Prepared the one-click push gateway setup page release; production tag required a follow-up CI install fix in v3.1.91.',
     ],
   },
   {
