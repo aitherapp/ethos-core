@@ -252,7 +252,7 @@ async function handlePush(
     return json({ error: 'not_registered' }, 403);
   }
 
-  const subject = env.VAPID_SUBJECT || 'mailto:push-gateway@ethos.local';
+  const subject = env.VAPID_SUBJECT || 'mailto:noreply@ethos.app';
 
   try {
     const built = await buildWebPushRequest(
@@ -266,14 +266,19 @@ async function handlePush(
     );
     const upstream = await sendWebPushRequest(built);
     if (!upstream.ok) {
-      // Do not forward upstream body (may contain sensitive details)
+      // Do not forward upstream body (may contain sensitive details).
+      // Log status only so Cloudflare Logs → Live can diagnose 4xx/410.
+      console.log(`webpush_upstream status=${upstream.status}`);
       return json({ error: 'upstream_failed', status: upstream.status }, 502);
     }
     return json({ ok: true }, 200);
-  } catch {
+  } catch (err) {
+    console.log(
+      `webpush_build_or_send_failed kind=${err instanceof Error ? err.name : 'unknown'}`,
+    );
     return json({ error: 'push_failed' }, 500);
   }
-}
+
 
 async function handleSetupPage(request: Request, env: Env): Promise<Response> {
   const gatewayUrl = new URL(request.url).origin;
