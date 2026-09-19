@@ -81,7 +81,7 @@ describe('notifyPeerViaGateway', () => {
 
     expect(ok).toBe(true);
     expect(fetchFn).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchFn.mock.calls[0];
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://gateway.example/v1/push');
     expect(String(url)).not.toContain('web.push.apple.com');
     expect((init as RequestInit).headers).toMatchObject({

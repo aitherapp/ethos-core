@@ -118,6 +118,8 @@ describe('subscription / push payload helpers', () => {
       notification: { title: 'ok', body: 'ok', data: huge },
     });
     expect(rejected.ok).toBe(false);
-    if (!rejected.ok) expect(rejected.error).toBe('payload_too_large');
+    if (rejected.ok === false) {
+      expect(rejected.error).toBe('payload_too_large');
+    }
   });
 });
