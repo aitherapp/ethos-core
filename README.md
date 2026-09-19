@@ -319,10 +319,14 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
-### v3.1.90 – One-Click Push Gateway Setup (2026-09-19)
+### v3.1.91 – One-Click Push Gateway Setup (2026-09-19)
 - After Cloudflare one-click deploy, open the Worker HTTPS URL to copy the gateway URL and auth token from the English setup page (token shown once).
 - Default path needs no Wrangler or `generate-secrets`; CLI secrets remain under Advanced in [`push-gateway/README.md`](push-gateway/README.md).
-- Refreshed app and service-worker cache versions; weekly warrant canary dates updated.
+- Deploy workflows now `npm ci` in `push-gateway/` so gateway setup tests resolve Worker dependencies.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.90 – One-Click Push Gateway Setup (build) (2026-09-19)
+- Prepared the setup-page release; production deploy failed on missing push-gateway packages and was superseded by v3.1.91.
 
 ### v3.1.89 – Opt-in BYO Push Gateway (2026-09-19)
 - Added opt-in background OS push via a user-owned HTTPS push gateway (Cloudflare Workers one-click reference in `push-gateway/`, or any host that implements the same API).
