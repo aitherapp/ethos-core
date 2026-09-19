@@ -56,20 +56,23 @@ Keep the existing early return `demo_vapid_key_for_node_env` when `localStorage`
 - `shouldSendPeerPush({ hasPushEndpoint, directConnected, relayConnected }): boolean`  
   Returns `true` only when `hasPushEndpoint && !directConnected && !relayConnected`.
 
-- `buildPeerPushNotification(senderName: string): { title: string; body: string }`  
-  - `title`: e.g. `New chat from ${senderName}` (sender display name already shared in signaling)  
-  - `body`: exactly `New message` — never include message text
+- `buildPeerPushArgs(senderName: string): { visitorId: string; pagePath: string; messageText: string }`  
+  - Reuses existing `sendDirectWebPush(endpoint, visitorId, pagePath, messageText)` without changing the widget helper.  
+  - `visitorId` = sender display name (already shared in signaling).  
+  - `pagePath` = fixed `'chat'`.  
+  - `messageText` = fixed `'New message'`.  
+  - Resulting push body from the helper is therefore `[chat] New message` — never chat plaintext.
 
 **`sendMessage` integration:**
 
 1. Move `import { sendDirectWebPush } from '../widget/pushTrigger'` to the top of `iroh.ts` with other imports.
-2. After encrypting / building the outbound message path decision, if `shouldSendPeerPush(...)` is true, call `sendDirectWebPush(endpoint, senderName, 'chat', 'New message')` (or adapt the helper so the push body stays `"New message"` without using chat plaintext). Errors are swallowed (`.catch(() => {})`) so push failure never blocks send.
+2. After the connection/relay reachability decision for the outbound send, if `shouldSendPeerPush(...)` is true, call `sendDirectWebPush(endpoint, ...buildPeerPushArgs(senderName))`. Errors are swallowed (`.catch(() => {})`) so push failure never blocks send.
 3. Do **not** call push when direct WebRTC or relay is connected.
 4. Message transport (direct / relay / handshake) remains as today.
 
-**Privacy rule:** The chat plaintext `text` parameter must never be passed into the push payload builder or `sendDirectWebPush` for peer chat.
+**Privacy rule:** The chat plaintext `text` parameter must never be passed into `buildPeerPushArgs` or `sendDirectWebPush` for peer chat.
 
-**Tests:** Unit tests for `shouldSendPeerPush` and `buildPeerPushNotification` covering:
+**Tests:** Unit tests for `shouldSendPeerPush` and `buildPeerPushArgs` covering:
 
 | direct | relay | endpoint | expect push |
 |--------|-------|----------|-------------|
@@ -78,7 +81,7 @@ Keep the existing early return `demo_vapid_key_for_node_env` when `localStorage`
 | false  | true  | yes      | no          |
 | false  | false | no       | no          |
 
-Plus assert body is `"New message"` and does not contain sample plaintext.
+Plus assert `messageText` is `"New message"` and that args never include sample chat plaintext.
 
 ## Error handling
 
