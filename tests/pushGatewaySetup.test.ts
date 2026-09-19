@@ -120,6 +120,8 @@ describe('setup page HTML', () => {
     expect(html.toLowerCase()).toContain('once');
     expect(html).toContain('/v1/setup/claim');
     expect(html).toContain('Enable background push');
+    expect(html).toContain('response.ok');
+    expect(html).toContain('Could not confirm. Check your connection and try again.');
   });
 
   it('claimed and secrets states omit auth token', () => {
@@ -161,6 +163,7 @@ describe('worker setup routes', () => {
 
     const first = await worker.fetch(new Request('https://gw.example/'), env);
     expect(first.headers.get('content-type')).toContain('text/html');
+    expect(first.headers.get('Cache-Control')).toContain('no-store');
     const html1 = await first.text();
     expect(html1).toMatch(/[A-Za-z0-9_-]{20,}/); // token present
 

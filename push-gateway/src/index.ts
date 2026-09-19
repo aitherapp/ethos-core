@@ -65,7 +65,12 @@ function text(body: string, status = 200): Response {
 function html(body: string, status = 200): Response {
   return new Response(body, {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'text/html; charset=utf-8' },
+    headers: {
+      ...CORS_HEADERS,
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+    },
   });
 }
 

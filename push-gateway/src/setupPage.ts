@@ -62,14 +62,27 @@ ${copyButton('Copy auth token', 'auth-token')}
   <li>Paste the <strong>Gateway URL</strong> and <strong>Auth token</strong> above, then save your settings.</li>
 </ol>
 <p><button type="button" id="claim-btn">I've saved this</button></p>
+<p id="claim-error" class="warn" hidden></p>
 <script>
 (function () {
   var token = ${tokenJs};
+  var errEl = document.getElementById('claim-error');
   document.getElementById('claim-btn').addEventListener('click', function () {
+    errEl.hidden = true;
     fetch('/v1/setup/claim', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token },
-    }).then(function () { location.reload(); });
+    }).then(function (response) {
+      if (response.ok) {
+        location.reload();
+        return;
+      }
+      errEl.textContent = 'Could not confirm. Check your connection and try again.';
+      errEl.hidden = false;
+    }).catch(function () {
+      errEl.textContent = 'Could not confirm. Check your connection and try again.';
+      errEl.hidden = false;
+    });
   });
 })();
 </script>`;

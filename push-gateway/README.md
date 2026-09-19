@@ -56,7 +56,8 @@ When all three secrets are set, the setup page shows "Configured via Cloudflare 
 4. **Payload limits** — title ≤ 100, body ≤ 200, plain text only  
 5. **Rate limit** — 30 pushes / token / minute  
 6. **No body logging** — never log title, body, data, or subscription keys  
-7. **Secrets** — VAPID private key + auth token only in Cloudflare Secrets  
+7. **Credentials** — one-click setup stores auth token + VAPID keys in KV; Cloudflare Secrets override when all three (`AUTH_TOKEN`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`) are set  
+
 
 ## Rotate secrets
 
