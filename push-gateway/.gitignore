@@ -1,0 +1,5 @@
+# Dependencies for the reference Worker (installed under push-gateway/)
+push-gateway/node_modules/
+push-gateway/.wrangler/
+push-gateway/.dev.vars
+push-gateway/dist/

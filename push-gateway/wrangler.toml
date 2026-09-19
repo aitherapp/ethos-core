@@ -1,0 +1,19 @@
+name = "ethos-push-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# KV for subscription registration binding + rate-limit counters.
+# Create once: wrangler kv namespace create SUBSCRIPTIONS
+# Then paste the id below (or use wrangler.toml [[kv_namespaces]] via dashboard deploy).
+[[kv_namespaces]]
+binding = "SUBSCRIPTIONS"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
+# Secrets (set via `wrangler secret put` — never commit values):
+#   AUTH_TOKEN
+#   VAPID_PUBLIC_KEY
+#   VAPID_PRIVATE_KEY
+# Optional:
+#   VAPID_SUBJECT  (mailto: or https: URL for VAPID JWT)

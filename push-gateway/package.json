@@ -1,0 +1,20 @@
+{
+  "name": "ethos-push-gateway",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "generate-secrets": "node scripts/generate-secrets.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "2.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260918.1",
+    "typescript": "~5.8.2",
+    "wrangler": "4.135.0"
+  }
+}
