@@ -103,14 +103,25 @@ Notification `data` includes at least:
 ### HTTP API (illustrative)
 
 - `GET /v1/vapid-public-key` — returns the application server public key for `PushManager.subscribe`
+- `POST /v1/subscriptions` — authenticated; registers this device’s `PushSubscription` (`endpoint` + `keys`) with the Worker under the auth token (required before push)
 - `POST /v1/push` — body includes subscription (`endpoint`, `keys`), notification (`title`, `body`, `data`), auth header/token
 - Optional: `GET /health` — no secrets
+- Optional: `DELETE /v1/subscriptions` — authenticated unregister
 
-Fail closed on missing/invalid auth, disallowed endpoint host, oversized payload, or rate limit exceeded.
+Fail closed on missing/invalid auth, disallowed endpoint host, **unregistered endpoint**, oversized payload, or rate limit exceeded.
+
+### Endpoint binding (required)
+
+Two layers, both enforced by default:
+
+1. **Host allowlist** — `endpoint` URL hostname must match a maintained list of known Web Push services (e.g. `web.push.apple.com`, `fcm.googleapis.com`, `updates.push.services.mozilla.com`, and other documented Chromium/Firefox/Safari hosts). Use precise hostnames (not broad `*.googleapis.com`). Reject everything else (SSRF protection). Keep the list in Worker source so one-click deploys stay current when ETHOS updates the template.
+2. **Registration binding** — `POST /v1/push` succeeds only if that exact `endpoint` (or subscription id derived from it) was previously registered via `POST /v1/subscriptions` for the same auth token. Knowing the Worker URL alone is not enough; the subscription must have been enrolled by the owner’s ETHOS client after subscribe.
+
+Registration metadata on the Worker may store **endpoint URL + push encryption keys (`p256dh`, `auth`) + timestamps** as required to send Web Push — not chat message bodies. Apply TTL/max entries per token so a Worker cannot grow without bound. No logging of keys or notification bodies.
 
 ### Client integration
 
-1. When opt-in + URL set: fetch VAPID public key → `subscribe` → `iroh.setPushSubscription` / persist.
+1. When opt-in + URL set: fetch VAPID public key → `subscribe` → **`POST /v1/subscriptions` to register** → `iroh.setPushSubscription` / persist.
 2. Handshake shares: gateway URL, auth token material as designed for recipients, subscription JSON, content mode, trigger mode.
 3. Replace insecure direct vendor POST with “POST to recipient gateway”.
 4. Widget and peer senders use the same client helper.
@@ -125,21 +136,23 @@ Target operators: people who are **not** security experts. Defaults must be safe
 1. **Auth token required** on all mutating routes (`POST /v1/push`). No anonymous push.
 2. **Secrets only in Cloudflare Secrets** (VAPID private key, auth token). Never commit secrets; never ship private VAPID key to browsers.
 3. **Deploy automation generates** strong random auth token + VAPID keypair and writes secrets — user copies Worker URL (+ token into ETHOS Settings if not delivered via a one-time setup page on the Worker that shows token once). Prefer a setup UX that does not encourage pasting secrets into public READMEs.
-4. **Endpoint host allowlist** — only known Web Push endpoints (Apple, FCM, Mozilla, Windows, etc.). Reject everything else (SSRF protection).
-5. **Payload limits** — max title/body/`data` size; strip/forbid HTML; plain text only.
-6. **Rate limiting** — per auth token and per subscription endpoint (built into Worker; enabled by default).
-7. **No body logging** — do not log title/body/`data`/subscription keys. At most aggregated counters (optional) without message content.
-8. **No persistence** of push payloads or subscriptions on the Worker (beyond optional short-lived rate-limit state).
-9. **CORS** — do not rely on `Origin` for authorization. Token auth is mandatory because widgets run on arbitrary sites.
-10. **TLS only** — refuse non-HTTPS gateway URLs in the ETHOS client.
-11. **Fail closed** — misconfiguration yields no push, not open relay.
+4. **Endpoint host allowlist** — only known Web Push service hostnames (Apple, FCM, Mozilla, etc.). Precise hosts only; reject everything else (SSRF protection).
+5. **Subscription registration binding** — push only to endpoints previously registered under the same auth token after the client’s `PushManager.subscribe`. Unregistered endpoints → 403/404.
+6. **Payload limits** — max title/body/`data` size; strip/forbid HTML; plain text only.
+7. **Rate limiting** — per auth token and per subscription endpoint (built into Worker; enabled by default).
+8. **No body logging** — do not log title/body/`data`/subscription keys. At most aggregated counters (optional) without message content.
+9. **Minimal persistence** — may store registered subscription records (endpoint + Web Push keys + timestamps) and short-lived rate-limit state only. Never store notification title/body/`data`. Bound registration count and TTL per token.
+10. **CORS** — do not rely on `Origin` for authorization. Token auth is mandatory because widgets run on arbitrary sites.
+11. **TLS only** — refuse non-HTTPS gateway URLs in the ETHOS client.
+12. **Fail closed** — misconfiguration yields no push, not open relay.
 
 ### Threat model (summary)
 
 | Threat | Mitigation |
 |--------|------------|
-| Spam to a known Worker URL | Auth token + rate limits |
-| SSRF via `endpoint` | Host allowlist |
+| Spam to a known Worker URL | Auth token + rate limits + registration binding |
+| SSRF via `endpoint` | Host allowlist + registration binding |
+| Push to attacker-controlled fake endpoint | Must pass allowlist **and** prior registration under owner token |
 | Secret leakage in git | Secrets store + generated at deploy |
 | XSS via notification text | Length limits + plain text |
 | Operator turns on debug logging of bodies | Document strongly; default code paths never log bodies |
