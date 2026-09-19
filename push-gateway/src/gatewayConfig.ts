@@ -40,12 +40,14 @@ export async function generateGatewayCredentials(): Promise<
   Omit<GatewayConfig, 'claimed' | 'createdAt'>
 > {
   const authToken = randomToken(32);
-  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+  const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
     'sign',
     'verify',
-  ]);
+  ])) as CryptoKeyPair;
   const privJwk = (await crypto.subtle.exportKey('jwk', pair.privateKey)) as JsonWebKey;
-  const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+  const pubRaw = new Uint8Array(
+    (await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer,
+  );
   if (!privJwk.d) throw new Error('Failed to export VAPID private key');
   const vapidPublicKey = btoa(String.fromCharCode(...pubRaw))
     .replace(/\+/g, '-')
