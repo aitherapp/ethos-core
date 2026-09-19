@@ -23,6 +23,22 @@ export function formatPushPayload(visitorId: string, pagePath: string, messagePr
   };
 }
 
+function encodeUrlSafeBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+function generateVapidPublicKeyFromEntropy(): string {
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error('Secure random entropy is required to generate a VAPID public key');
+  }
+  const bytes = new Uint8Array(65);
+  crypto.getRandomValues(bytes);
+  return encodeUrlSafeBase64(bytes);
+}
+
 export async function getOrCreateVapidPublicKey(): Promise<string> {
   if (typeof localStorage === 'undefined') {
     return 'demo_vapid_key_for_node_env';
@@ -37,13 +53,12 @@ export async function getOrCreateVapidPublicKey(): Promise<string> {
           ['sign', 'verify']
         );
         const exported = await crypto.subtle.exportKey('raw', keyPair.publicKey);
-        const bytes = new Uint8Array(exported);
-        key = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        key = encodeUrlSafeBase64(new Uint8Array(exported));
       } catch {
-        key = `vapid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        key = generateVapidPublicKeyFromEntropy();
       }
     } else {
-      key = `vapid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      key = generateVapidPublicKeyFromEntropy();
     }
     localStorage.setItem('ethos_vapid_public_key', key);
   }
