@@ -8,6 +8,7 @@ import {
   readGatewayConfig,
   type GatewayConfig,
 } from '../push-gateway/src/gatewayConfig';
+import { renderSetupPageHtml, claimGatewayConfig } from '../push-gateway/src/setupPage';
 
 function memoryKv() {
   const store = new Map<string, string>();
@@ -103,5 +104,51 @@ describe('gatewayConfig', () => {
     expect(store.has(GATEWAY_CONFIG_KV_KEY)).toBe(true);
     const second = await bootstrapGatewayConfig(kv);
     expect(second.authToken).toBe(first.authToken);
+  });
+});
+
+describe('setup page HTML', () => {
+  it('reveal state includes token and once-only warning', () => {
+    const html = renderSetupPageHtml({
+      kind: 'reveal',
+      gatewayUrl: 'https://gw.example',
+      authToken: 'secret-token-value',
+    });
+    expect(html).toContain('secret-token-value');
+    expect(html).toContain('https://gw.example');
+    expect(html.toLowerCase()).toContain('once');
+    expect(html).toContain('/v1/setup/claim');
+    expect(html).toContain('Enable background push');
+  });
+
+  it('claimed and secrets states omit auth token', () => {
+    const claimed = renderSetupPageHtml({ kind: 'claimed', gatewayUrl: 'https://gw.example' });
+    const secrets = renderSetupPageHtml({ kind: 'secrets', gatewayUrl: 'https://gw.example' });
+    expect(claimed).not.toContain('secret-token');
+    expect(secrets.toLowerCase()).toContain('secret');
+    expect(claimed.toLowerCase()).toContain('already');
+  });
+});
+
+describe('claimGatewayConfig', () => {
+  it('rejects missing or wrong bearer', async () => {
+    const { kv } = memoryKv();
+    await bootstrapGatewayConfig(kv);
+    expect(await claimGatewayConfig(kv, null)).toBe('unauthorized');
+    expect(await claimGatewayConfig(kv, 'Bearer wrong')).toBe('unauthorized');
+  });
+
+  it('claims with correct bearer and is idempotent', async () => {
+    const { kv } = memoryKv();
+    const cfg = await bootstrapGatewayConfig(kv);
+    expect(await claimGatewayConfig(kv, `Bearer ${cfg.authToken}`)).toBe('ok');
+    const after = await readGatewayConfig(kv);
+    expect(after?.claimed).toBe(true);
+    expect(await claimGatewayConfig(kv, `Bearer ${cfg.authToken}`)).toBe('ok');
+  });
+
+  it('returns missing when no config', async () => {
+    const { kv } = memoryKv();
+    expect(await claimGatewayConfig(kv, 'Bearer x')).toBe('missing');
   });
 });

@@ -1,3 +1,5 @@
+import { isAuthorized } from './auth';
+
 export const GATEWAY_CONFIG_KV_KEY = 'gateway:config';
 
 export interface GatewayConfig {
@@ -113,4 +115,17 @@ export async function bootstrapGatewayConfig(kv: KVNamespace): Promise<GatewayCo
   };
   await writeGatewayConfig(kv, config);
   return config;
+}
+
+export async function claimGatewayConfig(
+  kv: KVNamespace,
+  authorization: string | null,
+): Promise<'ok' | 'unauthorized' | 'missing'> {
+  const cfg = await readGatewayConfig(kv);
+  if (!cfg) return 'missing';
+  if (!isAuthorized(authorization, cfg.authToken)) return 'unauthorized';
+  if (!cfg.claimed) {
+    await writeGatewayConfig(kv, { ...cfg, claimed: true });
+  }
+  return 'ok';
 }
