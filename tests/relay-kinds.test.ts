@@ -45,7 +45,9 @@ async function publishAndWait(pool: SimplePool, signKey: Uint8Array, kind: numbe
   return { kind, succeeded, failed, received: received !== null, eventId: event.id?.slice(0, 8) };
 }
 
-describe('Relay Kind Support', () => {
+const describeLiveRelay = process.env.RUN_LIVE_RELAY_TESTS === '1' ? describe : describe.skip;
+
+describeLiveRelay('Relay Kind Support', () => {
   it('should test which event kinds relays accept and return', async () => {
     const pool = new SimplePool();
     const signKey = generateSecretKey();

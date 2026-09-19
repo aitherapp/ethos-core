@@ -19,6 +19,8 @@ import {
 } from './iceServers';
 import { normalizeGroupMembers } from './groups';
 import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMetadata, PeerMetadata, saveEncryptedGroups, saveEncryptedPeerMetadata } from './messageHistory';
+import { sendDirectWebPush } from '../widget/pushTrigger';
+import { peerPushCallArgs } from './peerPush';
 
 const CHUNK_SIZE = 16384;
 const MAX_PENDING_SIGNAL_PEERS = 64;
@@ -29,9 +31,7 @@ const MAX_ACTIVE_INBOUND_TRANSFERS_PER_PEER = 3;
 const INBOUND_TRANSFER_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_NOSTR_RELAYS = [
   'wss://nos.lol',
-  'wss://relay.damus.io',
   'wss://relay.primal.net',
-  'wss://offchain.pub',
   'wss://nostr.mom'
 ];
 
@@ -57,6 +57,17 @@ let USER_ICE_SERVERS = loadUserIceServers();
 
 export const SIGNAL_KIND = 41002;
 export const RELAY_DATA_KIND = 41003;
+
+export function isPkarrEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem('ethos_enable_pkarr') === 'true';
+}
+
+export function setPkarrEnabled(enabled: boolean): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('ethos_enable_pkarr', enabled ? 'true' : 'false');
+  }
+}
 const RELAY_DATA_TOPIC_SUFFIX = ':data';
 const RELAY_ENVELOPE_VERSION = 1;
 const MAX_RELAY_FILE_SIZE = 512 * 1024;
@@ -476,6 +487,20 @@ export class IrohManager {
   private ratchetStates: Map<string, RatchetState> = new Map();
   private peerPks: Map<string, { classical: string; pqc: string }> = new Map();
   private peerMetadata: Map<string, { displayName: string }> = new Map();
+  private pushSubscription: PushSubscription | null = null;
+
+  setPushSubscription(subscription: PushSubscription | null) {
+    this.pushSubscription = subscription;
+    if (subscription?.endpoint) {
+      this.pushEndpoint = subscription.endpoint;
+    }
+  }
+
+  getPushSubscription() {
+    return this.pushSubscription;
+  }
+  private pushEndpoint: string | null = null;
+  private peerPushEndpoints: Map<string, string> = new Map();
   private peerMetadataStore = new IndexedDbMessageHistoryStore();
   private groupStore = new IndexedDbMessageHistoryStore();
   private handshakeStatus: Map<string, boolean> = new Map();
@@ -836,6 +861,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcPublicKey: this.identity.pqcPublicKey,
         displayName: this.identity.displayName,
+        pushEndpoint: this.pushEndpoint,
       });
       return;
     }
@@ -899,6 +925,10 @@ export class IrohManager {
         this.persistMetadata();
       }
 
+      if (signal.pushEndpoint) {
+        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
+      }
+
       const ack = {
         senderId: this.currentPeerId,
         type: 'relay-helo-ack',
@@ -906,6 +936,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcCiphertext: ciphertext,
         displayName: this.identity.displayName,
+        pushEndpoint: this.pushEndpoint,
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
@@ -948,6 +979,10 @@ export class IrohManager {
       if (signal.displayName) {
         this.peerMetadata.set(peerId, { displayName: signal.displayName });
         this.persistMetadata();
+      }
+
+      if (signal.pushEndpoint) {
+        this.peerPushEndpoints.set(peerId, signal.pushEndpoint);
       }
 
       this.sendNostrSignal(peerId, {
@@ -1210,6 +1245,34 @@ export class IrohManager {
     return true;
   }
 
+  private candidateQueues = new Map<string, Array<any>>();
+  private candidateTimers = new Map<string, any>();
+
+  private sendCandidateThrottled(topicId: string, payload: any) {
+    if (!this.candidateQueues.has(topicId)) {
+      this.candidateQueues.set(topicId, []);
+    }
+    this.candidateQueues.get(topicId)!.push(payload);
+
+    if (!this.candidateTimers.has(topicId)) {
+      const processQueue = () => {
+        const queue = this.candidateQueues.get(topicId);
+        if (!queue || queue.length === 0) {
+          this.candidateTimers.delete(topicId);
+          return;
+        }
+        const item = queue.shift();
+        this.sendNostrSignal(topicId, item);
+        if (queue.length > 0) {
+          this.candidateTimers.set(topicId, setTimeout(processQueue, 200));
+        } else {
+          this.candidateTimers.delete(topicId);
+        }
+      };
+      this.candidateTimers.set(topicId, setTimeout(processQueue, 20));
+    }
+  }
+
   private setupSimplePeer(peer: any, peerId: string, topicId: string, isInitiator = false) {
     this.attachIceRetry(peer, peerId, isInitiator);
 
@@ -1220,12 +1283,18 @@ export class IrohManager {
       else if (data.candidate) signalType = 'candidate';
       
       console.debug(`[Nostr] WebRTC signal: type=${signalType}, topic=${topicId.slice(0,8)}`);
-      this.sendNostrSignal(topicId, {
+      const signalPayload = {
         senderId: this.currentPeerId,
         type: signalType,
         sessionId: this.signalSessions.get(peerId),
         sdp: data
-      });
+      };
+
+      if (signalType === 'candidate') {
+        this.sendCandidateThrottled(topicId, signalPayload);
+      } else {
+        this.sendNostrSignal(topicId, signalPayload);
+      }
 
       if (signalType === 'offer') {
         this.flushPendingSignals(peer, peerId);
@@ -1479,20 +1548,23 @@ export class IrohManager {
        const bytes = signedPacket.bytes();
        
        let successCount = 0;
-       for (const relayUrl of PKARR_RELAYS) {
-         try {
-           const res = await fetch(`${relayUrl}/${z32.encode(publicKey)}`, {
-             method: 'PUT',
-             body: bytes,
-             mode: 'cors',
-             headers: { 'Content-Type': 'application/octet-stream' }
-           });
-           if (res.ok || res.status === 204) {
-             successCount++;
-             console.debug(`Identity published to Pkarr node: ${relayUrl}`);
+       if (isPkarrEnabled()) {
+         for (const relayUrl of PKARR_RELAYS) {
+           try {
+             const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
+             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+             const res = await fetch(proxyUrl, {
+               method: 'PUT',
+               body: bytes,
+               headers: { 'Content-Type': 'application/octet-stream' }
+             });
+             if (res.ok || res.status === 204) {
+               successCount++;
+               console.debug(`Identity published to Pkarr node: ${relayUrl}`);
+             }
+           } catch (e) {
+              // Silent fail – pkarr is best-effort
            }
-         } catch (e) {
-            // Silent fail – pkarr is best-effort
          }
        }
        
@@ -1585,20 +1657,20 @@ export class IrohManager {
   }
 
    private async searchByNamePkarr(name: string): Promise<string | null> {
+     if (!isPkarrEnabled()) return null;
      try {
        const { publicKey } = await this.getDiscoveryKeypair(name);
        let signedPacket: SignedPacket | null = null;
        
        for (const relayUrl of PKARR_RELAYS) {
          try {
-           // Direct fetch – CORS errors caught and ignored (best-effort discovery)
+           const targetUrl = `${relayUrl}/${z32.encode(publicKey)}`;
+           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
            const controller = new AbortController();
            const timeout = setTimeout(() => controller.abort(), 5000);
            
-           const response = await fetch(`${relayUrl}/${z32.encode(publicKey)}`, {
+           const response = await fetch(proxyUrl, {
              method: 'GET',
-             mode: 'cors',
-             credentials: 'omit',
              signal: controller.signal
            });
            
@@ -2045,6 +2117,20 @@ export class IrohManager {
     this.ratchetStates.set(peerId, state);
     
     const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
+    const pushArgs = peerPushCallArgs(
+      this.peerPushEndpoints.get(peerId),
+      this.identity?.displayName || 'ETHOS Peer',
+      Boolean(conn?.connected),
+      this.relayStatus.get(peerId) === 'connected'
+    );
+    if (pushArgs) {
+      sendDirectWebPush(
+        pushArgs.endpoint,
+        pushArgs.visitorId,
+        pushArgs.pagePath,
+        pushArgs.messageText
+      ).catch(() => {});
+    }
     if (conn?.connected) {
       conn.send(JSON.stringify({ ...msg, encrypted: true }));
     } else if (this.relayStatus.get(peerId) === 'connected') {
@@ -2195,6 +2281,13 @@ export class IrohManager {
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
   getPeerName(peerId: string) { return this.peerMetadata.get(peerId)?.displayName; }
+  getPeerPushEndpoint(peerId: string) { return this.peerPushEndpoints.get(peerId) || null; }
+  setPushEndpoint(endpoint: string | null) { this.pushEndpoint = endpoint; }
+  getPushEndpoint(peerId: string): string | null { return this.peerPushEndpoints.get(peerId) || null; }
+  setPeerDisplayName(peerId: string, displayName: string) {
+    this.peerMetadata.set(peerId, { displayName });
+    this.persistMetadata().catch(() => {});
+  }
   getGroups() { return Array.from(this.groups.values()); }
   isGroupOwner(groupId: string) { return this.groups.get(groupId)?.ownerId === this.identity?.id; }
   setDisplayName(name: string) {

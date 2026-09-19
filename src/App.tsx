@@ -25,7 +25,7 @@ import {
   Network
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
-import { iroh } from './lib/iroh';
+import { iroh, isPkarrEnabled, setPkarrEnabled } from './lib/iroh';
 import { exportIdentity } from './lib/crypto';
 import { diagnosticsLog, installDiagnosticsConsoleCapture, DiagnosticEntry } from './lib/diagnostics';
 import { IndexedDbMessageHistoryStore, loadEncryptedMessageHistory, saveEncryptedMessageHistory } from './lib/messageHistory';
@@ -36,6 +36,9 @@ import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donat
 import { validateHistoryPassphrase } from './lib/historyLock';
 import { getUnverifiedDiscoveryWarning, isDirectPeerTicket } from './lib/discovery';
 import { buildNetworkDiagnostics } from './lib/networkDiagnostics';
+import { parseWidgetMetadata, formatWidgetContactName } from './lib/widgetOwner';
+import { sendLocalNotification, requestNotificationPermission } from './lib/notifications';
+import { getOrCreateVapidPublicKey, subscribeToWebPush } from './lib/webPush';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -75,9 +78,116 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.74';
+const APP_VERSION = '3.1.88';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.88',
+    title: 'Secure VAPID Entropy & Private Peer Push',
+    date: '2026-09-19',
+    changes: [
+      'Replaced insecure Math.random VAPID fallback with crypto.getRandomValues.',
+      'Peer chat push only when offline, with a generic New message body so E2E plaintext never reaches the lock screen.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.87',
+    title: 'iOS APNs Web Push Exchange',
+    date: '2026-09-18',
+    changes: [
+      'Exchanged Apple APNs push endpoints in handshakes so widget and peer messages trigger background notifications on iPhone PWA.',
+    ],
+  },
+  {
+    version: '3.1.86',
+    title: 'iOS PWA Safe-Area Status Bar Fix',
+    date: '2026-09-18',
+    changes: [
+      'Updated iOS PWA status bar style to default and added safe-area padding to prevent status bar overlap on iPhone.',
+    ],
+  },
+  {
+    version: '3.1.85',
+    title: 'OS Push Testing & Documentation Update',
+    date: '2026-09-18',
+    changes: [
+      'Added Test Push button in Settings to verify OS background notifications.',
+      'Documented Serverless OS Web Push (VAPID) in README.',
+    ],
+  },
+  {
+    version: '3.1.84',
+    title: 'Serverless Web Push (VAPID) OS Notifications',
+    date: '2026-09-18',
+    changes: [
+      'Implemented W3C VAPID & Web Push API with background Service Worker push event listener for native OS notifications across macOS, Windows, Android, and iOS PWA.',
+      'Added direct Web Push HTTP trigger in widget.js for visitor message alerts.',
+    ],
+  },
+  {
+    version: '3.1.83',
+    title: 'Web Notifications Permission Prompt Fix',
+    date: '2026-09-18',
+    changes: [
+      'Auto-prompted Web Notifications permission on app load and handled async permission requests in sendLocalNotification.',
+    ],
+  },
+  {
+    version: '3.1.82',
+    title: 'Widget Visitor Formatting & Relay Optimization',
+    date: '2026-09-18',
+    changes: [
+      'Auto-formatted incoming widget JSON payloads to clean chat messages with Visitor #xxxx (/page) contact labels.',
+      'Matched owner reply sender IDs in widget.js and removed restrictive Nostr relays.',
+    ],
+  },
+  {
+    version: '3.1.81',
+    title: 'Standalone IIFE Widget Bundle Fix',
+    date: '2026-09-18',
+    changes: [
+      'Bundled widget.js as a standalone self-contained IIFE script without ES module import dependencies for direct browser embedding.',
+    ],
+  },
+  {
+    version: '3.1.80',
+    title: 'Widget Signaling & Relay Throttling Fixes',
+    date: '2026-09-18',
+    changes: [
+      'Connected widget.js script to ETHOS Nostr signaling so visitor messages and owner replies transmit E2EE.',
+      'Added ICE candidate throttling in Nostr signaling to eliminate rate-limit bans from Nostr relays.',
+    ],
+  },
+  {
+    version: '3.1.79',
+    title: 'Pkarr Toggle & Privacy Fixes',
+    date: '2026-09-18',
+    changes: [
+      'Added settings toggle for Pkarr DHT peer discovery (disabled by default to avoid external proxy dependency).',
+    ],
+  },
+  {
+    version: '3.1.77',
+    title: 'Embeddable Chat Widget & Local Notifications',
+    date: '2026-09-18',
+    changes: [
+      'Added embeddable ETHOS live chat widget (dist/widget.js) for websites with Intercom-style floating launcher.',
+      'Added serverless local notifications for background website visitor messages.',
+    ],
+  },
+  {
+    version: '3.1.76',
+    title: 'Security Update (Vitest)',
+    date: '2026-09-18',
+    changes: ['Patched Vitest dependency (GHSA-82fw-gwwq-j7x9) and updated app cache.'],
+  },
+  {
+    version: '3.1.75',
+    title: 'Weekly Canary Update',
+    date: '2026-09-18',
+    changes: ['Updated the weekly canary statement and refreshed app cache.'],
+  },
   {
     version: '3.1.74',
     title: 'Weekly Canary Update',
@@ -486,6 +596,13 @@ export default function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [pkarrEnabled, setPkarrEnabledState] = useState(() => isPkarrEnabled());
+
+  const handleTogglePkarr = () => {
+    const next = !pkarrEnabled;
+    setPkarrEnabled(next);
+    setPkarrEnabledState(next);
+  };
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
@@ -593,6 +710,12 @@ export default function App() {
   }, [messages, historyLockEnabled, isHistoryUnlocked]);
 
   useEffect(() => {
+    requestNotificationPermission().then(() => {
+      getOrCreateVapidPublicKey().then(vapidKey => {
+        subscribeToWebPush(vapidKey).catch(() => {});
+      });
+    }).catch(() => {});
+
     return diagnosticsLog.subscribe(() => {
       setDiagnosticEntries(diagnosticsLog.getEntries());
     });
@@ -600,20 +723,31 @@ export default function App() {
 
   useEffect(() => {
     iroh.onMessage((msg) => {
-      if (msg.type === 'reaction') {
+      let processedMsg = msg;
+      const widgetMeta = parseWidgetMetadata(msg.content);
+      if (widgetMeta) {
+        processedMsg = { ...msg, content: widgetMeta.message };
+        const visitorLabel = formatWidgetContactName(widgetMeta.visitorId, widgetMeta.page);
+        iroh.setPeerDisplayName(msg.senderId, visitorLabel);
+        sendLocalNotification(`New chat from ${widgetMeta.visitorId}`, {
+          body: `[${widgetMeta.page}] ${widgetMeta.message}`,
+        });
+      }
+
+      if (processedMsg.type === 'reaction') {
         setMessages(prev => prev.map(m => {
-          if (m.id === msg.targetMessageId) {
+          if (m.id === processedMsg.targetMessageId) {
             const reactions = { ...m.reactions };
-            const users = reactions[msg.content] || [];
-            if (!users.includes(msg.senderId)) {
-              reactions[msg.content] = [...users, msg.senderId];
+            const users = reactions[processedMsg.content] || [];
+            if (!users.includes(processedMsg.senderId)) {
+              reactions[processedMsg.content] = [...users, processedMsg.senderId];
             }
             return { ...m, reactions };
           }
           return m;
         }));
       } else {
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => [...prev, processedMsg]);
       }
       
       setPeers(prev => prev.includes(msg.senderId) ? prev : [...prev, msg.senderId]);
@@ -1113,11 +1247,14 @@ export default function App() {
         onChange={handleFileShare}
       />
       {/* Top Navigation / Title Bar */}
-      <nav className={cn(
-        "relative h-12 bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20",
-        showMobileMenu && "z-[130]"
-      )}>
-        <div className="flex items-center gap-3">
+      <nav 
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        className={cn(
+          "relative bg-surface-rail border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-20",
+          showMobileMenu && "z-[130]"
+        )}
+      >
+        <div className="flex items-center gap-3 h-12">
           <button 
             onClick={() => {
               setShowMobileMenu(false);
@@ -1149,7 +1286,7 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="fixed right-4 top-12 z-[120] w-60 rounded-xl border border-brand/20 bg-[#10141c] shadow-2xl shadow-black/80 overflow-hidden"
+                className="fixed right-4 top-[calc(3.25rem+env(safe-area-inset-top))] z-[120] w-60 rounded-xl border border-brand/20 bg-[#10141c] shadow-2xl shadow-black/80 overflow-hidden"
                 role="menu"
               >
                 {mobileNavItems.map(item => (
@@ -2182,6 +2319,43 @@ export default function App() {
                     placeholder="Enter node alias..."
                   />
                   <p className="text-[9px] opacity-30 mt-2 italic">This name is broadcasted to peers during the HELO handshake.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Discovery Features</label>
+                  <button 
+                    onClick={handleTogglePkarr}
+                    className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${pkarrEnabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
+                  >
+                    <span className="text-xs font-mono">Enable Pkarr DHT Discovery</span>
+                    <div className={`w-8 h-4 rounded-full relative transition-colors ${pkarrEnabled ? 'bg-brand' : 'bg-border'}`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pkarrEnabled ? 'left-4.5' : 'left-0.5'}`} />
+                    </div>
+                  </button>
+                  <p className="text-[9px] opacity-30 mt-2 italic">Uses Pkarr DHT to find peers by name. Requires external proxy for web compatibility.</p>
+                </div>
+
+                <div className="p-3 bg-bg border border-border rounded-lg flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-mono font-bold block text-text">OS Notifications</span>
+                    <span className="text-[9px] opacity-40 block">Test native background push notifications</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await sendLocalNotification("ETHOS Test Notification", {
+                        body: "OS background notifications are active on your device!",
+                      });
+                      if (res === null && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+                        setStatus({ type: 'warning', message: 'Notification permission blocked in browser/OS settings' });
+                      } else {
+                        setStatus({ type: 'info', message: 'Test notification sent! Check your OS Notification Center.' });
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded bg-brand/10 border border-brand/20 text-brand text-[10px] font-bold uppercase hover:bg-brand/20 transition-colors"
+                  >
+                    Test Push
+                  </button>
                 </div>
 
                 <div className="space-y-3">

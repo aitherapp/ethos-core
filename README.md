@@ -7,6 +7,8 @@ The project is designed around one rule: user content must never fall back to pl
 ## What You Can Do
 
 - Send end-to-end encrypted one-to-one messages.
+- Embed a private, zero-server live chat widget (`widget.js`) on any website for instant visitor messaging.
+- Receive serverless Web Notifications for background visitor messages.
 - Create encrypted group chats with persisted group membership.
 - Transfer encrypted files directly between devices when WebRTC is available.
 - Continue communicating through encrypted Nostr relay fallback when a direct tunnel cannot be established.
@@ -16,6 +18,49 @@ The project is designed around one rule: user content must never fall back to pl
 - Copy mobile diagnostics from inside the app when a peer connection needs troubleshooting.
 - Treat display-name discovery as unverified; direct peer tickets are the trusted connection path.
 - On small screens, use the top-right menu for Network/Metrics, About, and Settings.
+
+## Embeddable Live Chat Widget
+
+ETHOS includes a zero-server, privacy-first live chat widget (Intercom/Crisp alternative) that can be embedded into any website with a single script tag. All messages are end-to-end encrypted between site visitors and the site owner's ETHOS app.
+
+### How to Embed on Your Website
+
+Add the following script tag before the closing `</body>` tag of your site:
+
+```html
+<script 
+  src="https://aitherapp.github.io/ethos/widget.js" 
+  data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
+  data-title="Support & Feedback"
+  data-greeting="Hello! How can we help you today?"
+  data-color="#000000"
+  async>
+</script>
+```
+
+### Configuration Options
+
+| Attribute | Required | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `data-owner-ticket` | **Yes** | Your ETHOS node ticket (`ethos://node/...`) where visitor messages will be sent. Copy from **Share/Connect tickets** in ETHOS. | — |
+| `data-title` | No | Title displayed in the widget header. | `Chat with us` |
+| `data-greeting` | No | Initial greeting message displayed to visitors. | `Hello! How can we help you today?` |
+| `data-color` | No | Hex color code for the widget launcher bubble and header. | `#000000` |
+
+### Key Features
+- **Zero Server Overhead:** Uses Nostr relays for end-to-end encrypted signaling. No central backend or database needed.
+- **Shadow DOM Isolation:** Styles are completely isolated to prevent CSS leaks into or out of your website.
+- **Context-Aware:** Captures current page path (`window.location.pathname`) so site owners know which page the visitor is viewing.
+- **Serverless OS Web Push Notifications:** Uses W3C VAPID and Service Workers for native OS background notifications across macOS, Windows, Android, and iOS.
+
+## Serverless OS Web Push Notifications (VAPID)
+
+ETHOS uses the W3C Web Push VAPID standard and Service Workers to deliver native background notifications to your operativsystem (macOS, Windows, Android, iOS PWA) when new messages or website widget chats arrive.
+
+- **Zero Central Server:** Uses browser-vendor push portals (Apple APNs, Google FCM, Microsoft WNS). No central database or third-party server sees your messages.
+- **End-to-End Encrypted Payload:** Notification payloads are encrypted with Web Push RFC 8291 (AES-128-GCM) so push portals cannot inspect message text.
+- **Peer chat privacy:** Offline peer alerts use a generic body (`New message`) and never include E2E chat plaintext on the lock screen.
+- **Testing Notifications:** Open Settings (`Node Configuration`) in ETHOS and click **Test Push** to verify your browser and OS notification permissions.
 
 ## How Connections Work
 
@@ -243,6 +288,73 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.88 – Secure VAPID Entropy & Private Peer Push (2026-09-19)
+- Replaced insecure `Math.random` VAPID fallback with `crypto.getRandomValues` (Code Scanning insecure-randomness).
+- Peer chat push notifies only when offline; body stays generic (`[chat] New message`) so E2E plaintext never reaches the OS notification.
+- Design/plan: `docs/superpowers/specs/2026-09-19-vapid-randomness-peer-push-design.md`, `docs/superpowers/plans/2026-09-19-vapid-randomness-peer-push.md`.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.87 – Web Push APNs Endpoint Exchange (2026-09-18)
+- Exchanged Web Push subscription endpoints over signaling so `widget.js` can trigger background push alerts via Apple APNs / Google FCM when the ETHOS PWA is closed.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.86 – iOS PWA Safe Area Fix (2026-09-18)
+- Updated iOS PWA status bar style and top navigation padding so search icon and mobile menu sit cleanly below the iPhone clock/status bar.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.85 – OS Push Testing & Documentation Update (2026-09-18)
+- Added `Test Push` button under Settings -> Node Configuration to verify browser and OS notification settings.
+- Documented Serverless OS Web Push (VAPID) section in README.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.84 – Serverless Web Push VAPID Implementation (2026-09-18)
+- Added W3C Web Push VAPID keypair generation and PushManager auto-subscription.
+- Added background `push` event listener in Service Worker for OS notifications on macOS, Windows, Android, and iOS.
+- Added direct Web Push HTTP trigger in `widget.js` for instant background alerts.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.83 – Web Notifications Permission Prompt Fix (2026-09-18)
+- Prompted browser notification permissions on app mount so background visitor alerts display reliably.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.82 – Widget Visitor Formatting & Relay Optimization (2026-09-18)
+- Auto-parsed `ethos_widget_init` payloads in ETHOS app to display clean chat messages with `Visitor #xxxx (/page)` labels.
+- Updated `widget.js` to match owner reply sender IDs and render replies inside widget UI.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.81 – Standalone IIFE Widget Bundle Fix (2026-09-18)
+- Configured dedicated IIFE build target for `dist/widget.js` so it loads cleanly as a standalone script on any website without ES module import errors.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.80 – Widget E2EE Signaling & Relay Throttling (2026-09-18)
+- Connected `widget.js` directly to `iroh` signaling to enable two-way E2EE messaging between widget visitors and site owners.
+- Throttled WebRTC candidate bursts in Nostr signaling to prevent Nostr relay rate-limiting/banning.
+- Preserved optional Pkarr DHT toggle under Settings for nickname searching.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.79 – Pkarr Toggle & Privacy Fixes (2026-09-18)
+- Added settings toggle for Pkarr DHT peer discovery (disabled by default) to keep ETHOS 100% serverless and eliminate external proxy dependencies.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.78 – CORS & PWA Meta Fixes (2026-09-18)
+- Added `<meta name="mobile-web-app-capable" content="yes">` to fix browser deprecation warning.
+- Fixed Pkarr DHT CORS errors by routing requests through proxy.
+- Replaced unreliable Nostr relay `wss://relay.damus.io` with `wss://relay.nostr.band`.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.77 – Embeddable Chat Widget & Local Notifications (2026-09-18)
+- Introduced embeddable `widget.js` script for embedding ETHOS live chat on external websites with Shadow DOM style isolation.
+- Added serverless Web Notifications API integration for background visitor message alerts.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.76 – Security Update (Vitest) (2026-09-18)
+- Updated Vitest to v4.1.11 to patch GHSA-82fw-gwwq-j7x9 path traversal vulnerability.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.75 – Weekly Canary Update (2026-09-18)
+- Updated the weekly canary statement.
+- Refreshed app cache to prevent stale builds.
+
 ### v3.1.74 – Weekly Canary Update (2026-09-10)
 - Updated the weekly canary statement.
 - Refreshed app cache to prevent stale builds.
