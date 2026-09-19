@@ -92,11 +92,11 @@ export async function sendViaPushGateway(opts: {
   body: string;
   data: Record<string, string>;
   fetchFn?: typeof fetch;
-}): Promise<boolean> {
+}): Promise<{ ok: true } | { ok: false; status: number; error?: string; upstreamStatus?: number }> {
   const fetchFn = opts.fetchFn ?? fetch;
   const base = normalizeGatewayBaseUrl(opts.baseUrl);
   if (!isHttpsGatewayUrl(base)) {
-    return false;
+    return { ok: false, status: 0, error: 'invalid_gateway_url' };
   }
   const res = await fetchFn(`${base}/v1/push`, {
     method: 'POST',
@@ -113,5 +113,17 @@ export async function sendViaPushGateway(opts: {
       },
     }),
   });
-  return res.ok;
+  if (res.ok) {
+    return { ok: true };
+  }
+  let error: string | undefined;
+  let upstreamStatus: number | undefined;
+  try {
+    const parsed = (await res.json()) as { error?: string; status?: number };
+    error = parsed.error;
+    if (typeof parsed.status === 'number') upstreamStatus = parsed.status;
+  } catch {
+    // ignore non-JSON error bodies
+  }
+  return { ok: false, status: res.status, error, upstreamStatus };
 }

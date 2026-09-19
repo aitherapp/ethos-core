@@ -16,11 +16,13 @@ It never stores chat message bodies. Defaults fail closed (no open relay).
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/aitherapp/ethos-core/tree/main/push-gateway)
 
 1. Click **Deploy to Cloudflare** and finish the Cloudflare wizard.
-2. Open your Worker **HTTPS URL** in the browser (shown after deploy).
+   - If you already deployed once, choose a **new project / repo name** (e.g. `ethos-push-gw2`). Reusing the same name fails because the KV namespace already exists.
+2. Open your Worker **HTTPS URL** in the browser (shown after deploy, like `https://<name>.<account>.workers.dev`).
 3. On the setup page, **copy the Gateway URL and Auth token** immediately.
-   - The auth token is shown **once**. Click **I've saved this** after copying.
+   - The auth token is shown **once**. Paste into ETHOS **before** clicking **I've saved this**.
    - Open the URL yourself right after deploy; do not share it until the token is saved.
 4. In ETHOS → **Settings** → **OS Notifications**: enable **background push**, paste **Gateway URL** and **Auth token**, then **Save Changes**.
+5. Use **Test gateway push**. A `502` with `upstream_failed` usually means re-save ETHOS settings (fresh subscription) or check Cloudflare **Logs → Live**.
 
 ### Advanced (CLI secrets)
 
@@ -36,7 +38,11 @@ npx wrangler deploy
 
 When all three secrets are set, the setup page shows "Configured via Cloudflare Secrets" and does not reveal a token.
 
-**Already deployed?** Redeploy the latest Worker and open your Worker URL again. To issue a new one-time bootstrap token, delete the bootstrap key in your `SUBSCRIPTIONS` KV namespace, then reload the setup page.
+**Already deployed?** Do **not** click Deploy to Cloudflare again (it tries to create a new KV namespace and fails if the name exists). Update the existing Worker instead:
+
+1. **Quick secret-only fix** (e.g. VAPID subject for Chrome/FCM): Cloudflare Dashboard → Workers → your Worker → **Settings** → **Variables and Secrets** → add secret `VAPID_SUBJECT` = `mailto:you@example.com` (no full redeploy required for secrets; trigger a normal **Deploy** / **Retry deployment** from the Worker’s Deployments tab if the dashboard asks you to apply).
+2. **Code update:** open your existing gateway GitHub repo (created by the first one-click), pull or paste the latest `push-gateway/` sources, then from that folder run `npm install && npx wrangler deploy` (updates the same Worker + existing KV binding).
+3. **New one-time bootstrap token:** in the existing `SUBSCRIPTIONS` KV namespace, delete key `gateway:config`, then open your Worker URL again.
 
 ## HTTP API
 
