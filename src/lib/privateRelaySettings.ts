@@ -49,3 +49,15 @@ export function buildAuthedRelayUrl(relayUrl: string, authToken: string): string
   parsed.searchParams.set('token', authToken);
   return parsed.toString();
 }
+
+/** Decide whether Settings Save should attempt a private-relay apply. */
+export function privateRelaySaveAction(settings: PrivateRelaySettings): {
+  shouldApply: boolean;
+  error?: string;
+} {
+  if (!settings.enabled) return { shouldApply: false };
+  if (!isWssRelayUrl(settings.relayUrl) || !settings.authToken) {
+    return { shouldApply: false, error: 'Private relay unavailable' };
+  }
+  return { shouldApply: true };
+}

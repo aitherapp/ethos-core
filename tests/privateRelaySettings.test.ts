@@ -5,6 +5,7 @@ import {
   savePrivateRelaySettings,
   isWssRelayUrl,
   buildAuthedRelayUrl,
+  privateRelaySaveAction,
 } from '../src/lib/privateRelaySettings';
 
 describe('privateRelaySettings', () => {
@@ -47,5 +48,45 @@ describe('privateRelaySettings', () => {
     expect(buildAuthedRelayUrl('wss://relay.example.com/?token=old', 'new')).toBe(
       'wss://relay.example.com/?token=new'
     );
+  });
+
+  describe('privateRelaySaveAction', () => {
+    it('does not apply when disabled', () => {
+      expect(
+        privateRelaySaveAction({
+          enabled: false,
+          relayUrl: 'wss://relay.example.com',
+          authToken: 'tok',
+        })
+      ).toEqual({ shouldApply: false });
+    });
+
+    it('errors when enabled but url or token invalid', () => {
+      expect(
+        privateRelaySaveAction({
+          enabled: true,
+          relayUrl: 'https://not-wss.example',
+          authToken: 'tok',
+        })
+      ).toEqual({ shouldApply: false, error: 'Private relay unavailable' });
+
+      expect(
+        privateRelaySaveAction({
+          enabled: true,
+          relayUrl: 'wss://relay.example.com',
+          authToken: '',
+        })
+      ).toEqual({ shouldApply: false, error: 'Private relay unavailable' });
+    });
+
+    it('applies when enabled with valid wss url and token', () => {
+      expect(
+        privateRelaySaveAction({
+          enabled: true,
+          relayUrl: 'wss://relay.example.com',
+          authToken: 'tok',
+        })
+      ).toEqual({ shouldApply: true });
+    });
   });
 });

@@ -46,6 +46,12 @@ import {
   type PushSettings,
   type PushTriggerMode,
 } from './lib/pushSettings';
+import {
+  loadPrivateRelaySettings,
+  savePrivateRelaySettings,
+  privateRelaySaveAction,
+  type PrivateRelaySettings,
+} from './lib/privateRelaySettings';
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
 import {
@@ -816,6 +822,10 @@ export default function App() {
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
+  const [privateRelaySettings, setPrivateRelaySettings] = useState<PrivateRelaySettings>(() =>
+    loadPrivateRelaySettings()
+  );
+  const [isPrivateRelayRetrying, setIsPrivateRelayRetrying] = useState(false);
   const [iceServers, setIceServers] = useState<UserIceServer[]>([]);
   const [iceDraft, setIceDraft] = useState({
     label: '',
@@ -1449,6 +1459,7 @@ export default function App() {
   const handleOpenSettings = () => {
     setTempName(identity?.displayName || '');
     setRelays(iroh.getRelays());
+    setPrivateRelaySettings(loadPrivateRelaySettings());
     setIceServers(iroh.getUserIceServers());
     setIceDraft({ label: '', urls: '', username: '', credential: '' });
     setIceTestMessage(null);
@@ -1559,6 +1570,43 @@ export default function App() {
   const handleResetRelays = () => {
     iroh.resetRelays();
     setRelays(iroh.getRelays());
+    setPrivateRelaySettings(loadPrivateRelaySettings());
+  };
+
+  const persistPrivateRelaySettings = async (next: PrivateRelaySettings): Promise<boolean> => {
+    savePrivateRelaySettings(next);
+    setPrivateRelaySettings(next);
+    const action = privateRelaySaveAction(next);
+    if (action.error) {
+      setStatus({ type: 'warning', message: action.error });
+      clearStatusSoon();
+      return false;
+    }
+    if (!action.shouldApply) {
+      return true;
+    }
+    const ok = await iroh.applyPrivateRelayFromSettings();
+    setRelays(iroh.getRelays());
+    if (!ok) {
+      setStatus({ type: 'warning', message: 'Private relay unavailable' });
+      clearStatusSoon();
+      return false;
+    }
+    return true;
+  };
+
+  const handleRetryPrivateRelay = async () => {
+    setIsPrivateRelayRetrying(true);
+    try {
+      const ok = await iroh.retryPrivateRelayHandoff();
+      setRelays(iroh.getRelays());
+      if (!ok) {
+        setStatus({ type: 'warning', message: 'Private relay unavailable' });
+        clearStatusSoon();
+      }
+    } finally {
+      setIsPrivateRelayRetrying(false);
+    }
   };
 
   const handleCopyDiagnostics = async () => {
@@ -3147,6 +3195,75 @@ export default function App() {
                   <p className="text-[9px] opacity-20 italic font-mono leading-tight">
                     Signaling relays facilitate WebRTC handshakes. Adding multiple relays improves reliability in restricted networks.
                   </p>
+
+                  <div className="space-y-3 p-3 bg-bg border border-border rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPrivateRelaySettings(current => ({
+                          ...current,
+                          enabled: !current.enabled,
+                        }))
+                      }
+                      className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${privateRelaySettings.enabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
+                    >
+                      <span className="text-xs font-mono">Enable private relay</span>
+                      <div className={`w-8 h-4 rounded-full relative transition-colors ${privateRelaySettings.enabled ? 'bg-brand' : 'bg-border'}`}>
+                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${privateRelaySettings.enabled ? 'left-4.5' : 'left-0.5'}`} />
+                      </div>
+                    </button>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Relay URL</label>
+                      <input
+                        type="url"
+                        value={privateRelaySettings.relayUrl}
+                        onChange={(e) =>
+                          setPrivateRelaySettings(current => ({
+                            ...current,
+                            relayUrl: e.target.value,
+                          }))
+                        }
+                        className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                        placeholder="wss://…"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Auth token</label>
+                      <input
+                        type="password"
+                        value={privateRelaySettings.authToken}
+                        onChange={(e) =>
+                          setPrivateRelaySettings(current => ({
+                            ...current,
+                            authToken: e.target.value,
+                          }))
+                        }
+                        className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                        placeholder="Token from your relay setup page"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <p className="text-[9px] opacity-40 leading-relaxed">
+                      After Cloudflare deploy, open your Worker URL to copy the Relay URL and auth token. See{' '}
+                      <a href="./relay/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
+                        relay/README.md
+                      </a>
+                      .
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleRetryPrivateRelay()}
+                      disabled={isPrivateRelayRetrying}
+                      className="w-full px-3 py-1.5 rounded border border-border/60 hover:border-brand/40 text-text-secondary hover:text-brand text-[10px] font-bold uppercase transition-colors disabled:opacity-30"
+                    >
+                      {isPrivateRelayRetrying ? 'Retrying…' : 'Retry private relay'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -3434,8 +3551,12 @@ export default function App() {
                           iroh.updateIceServers(iceServers);
                           setIdentity(iroh.getIdentity());
                           const pushOk = await persistPushSettings(pushSettings);
-                          // Keep Settings open when push enable fails so in-panel feedback stays visible.
-                          if (pushOk || !pushSettings.enabled) {
+                          const privateRelayOk = await persistPrivateRelaySettings(privateRelaySettings);
+                          // Keep Settings open when push or private relay enable fails so feedback stays visible.
+                          if (
+                            (pushOk || !pushSettings.enabled) &&
+                            (privateRelayOk || !privateRelaySettings.enabled)
+                          ) {
                             setShowSettings(false);
                           }
                         })();
