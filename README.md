@@ -48,6 +48,8 @@ Add the following script tag before the closing `</body>` tag of your site:
 | `data-title` | No | Title displayed in the widget header. | `Chat with us` |
 | `data-greeting` | No | Initial greeting message displayed to visitors. | `Hello! How can we help you today?` |
 | `data-color` | No | Hex color code for the widget launcher bubble and header. | `#000000` |
+| `data-relay-url` | No | Private Nostr relay WebSocket URL (`wss://…`) for visitor signaling. When set together with `data-relay-token`, the widget uses this relay only (no public defaults). | — |
+| `data-relay-token` | No | Auth token for the private relay (appended as `?token=` on the WebSocket URL). Use with `data-relay-url`. | — |
 
 ### Key Features
 - **Zero Server Overhead:** Uses Nostr relays for end-to-end encrypted signaling. No central backend or database needed.

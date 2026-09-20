@@ -3,6 +3,8 @@ export interface WidgetConfig {
   title: string;
   greeting: string;
   primaryColor: string;
+  relayUrl?: string;
+  relayToken?: string;
 }
 
 export interface WidgetInitPayload {
@@ -35,6 +37,8 @@ export function parseWidgetConfig(data: Record<string, string | undefined>): Wid
     title: data.title || 'Chat with us',
     greeting: data.greeting || 'Hello! How can we help you today?',
     primaryColor: data.primaryColor || '#000000',
+    relayUrl: data.relayUrl,
+    relayToken: data.relayToken,
   };
 }
 

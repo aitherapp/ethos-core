@@ -1,4 +1,5 @@
 import { iroh } from '../lib/iroh';
+import { buildAuthedRelayUrl, isWssRelayUrl } from '../lib/privateRelaySettings';
 import { parseWidgetConfig, generateVisitorId, createWidgetPayload } from './widgetCore';
 import { createWidgetDOM } from './widgetUI';
 import { notifyPeerViaGateway, type NotifyPushProfile } from '../lib/peerPush';
@@ -58,6 +59,8 @@ function resolveOwnerPushProfile(
       title: currentScript.getAttribute('data-title') || undefined,
       greeting: currentScript.getAttribute('data-greeting') || undefined,
       primaryColor: currentScript.getAttribute('data-color') || undefined,
+      relayUrl: currentScript.getAttribute('data-relay-url') || undefined,
+      relayToken: currentScript.getAttribute('data-relay-token') || undefined,
     });
 
     const visitorId = localStorage.getItem('ethos_widget_visitor_id') || generateVisitorId();
@@ -71,6 +74,16 @@ function resolveOwnerPushProfile(
     // Connect to site owner's ETHOS ticket
     const ownerTicket = config.ownerTicket;
     const ownerPeerId = ownerTicket.replace('ethos://node/', '').slice(0, 8);
+    const relayUrl = config.relayUrl;
+    const relayToken = config.relayToken;
+    if (
+      relayUrl &&
+      relayToken &&
+      relayToken.trim() &&
+      isWssRelayUrl(relayUrl)
+    ) {
+      iroh.setRelays([buildAuthedRelayUrl(relayUrl, relayToken)]);
+    }
     await iroh.connectByTicket(ownerTicket);
 
     const refreshOwnerStatus = () => {
