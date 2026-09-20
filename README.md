@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.1.100" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.0" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.0 – BYO Push & Embeddable Widget (2026-09-20)
+- Minor milestone: opt-in BYO push gateway, reliable iPhone wake-ups, and a production-ready site widget.
+- Background push via your own HTTPS gateway; notification deep-links open the right chat on iOS PWA.
+- Widget shows build version and live connection status; wakes the owner then retries delivery so notis and ciphertext stay paired.
+- Embed snippet uses `widget.js?v=` for cache busting; deploy checklist covers all version touchpoints.
+
 ### v3.1.100 – Widget Wake Then Deliver (2026-09-20)
 - If the owner is asleep, the widget wakes via push, waits for a usable tunnel, then retries send so notifications are not orphaned without ciphertext.
 - Peer `sendMessage` only requests remote push after the encrypted payload is on a live direct/relay transport.

@@ -92,6 +92,17 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.0',
+    title: 'BYO Push & Embeddable Widget',
+    date: '2026-09-20',
+    changes: [
+      'Minor milestone for opt-in BYO push gateway, reliable mobile wake-ups, and the embeddable site widget.',
+      'Notification deep-links open the correct chat on iOS; widget shows version and live Direct/Relay/Offline status.',
+      'Widget wake-then-deliver pairs push with ciphertext retry; embed URLs use widget.js?v= for cache busting.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
     version: '3.1.100',
     title: 'Widget Wake Then Deliver',
     date: '2026-09-20',
