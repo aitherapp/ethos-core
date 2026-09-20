@@ -20,6 +20,8 @@ The canonical version is the one in `package.json` (`"version"`).
 
 > Rule of thumb: every deploy that changes user-facing files must bump the
 > version, because the cache keys are derived from it.
+> Write the new version down — you will paste it into **5** other places
+> (plus the README widget embed `?v=`).
 
 ---
 
@@ -31,15 +33,18 @@ The canonical version is the one in `package.json` (`"version"`).
 | 2 | `src/version.ts` | `export const APP_VERSION = 'X.Y.Z';` | **often stale** — verify |
 | 3 | `public/sw.js` | `const CACHE_NAME = 'ethos-vX.Y.Z';` (line 1) | **often stale** — verify |
 | 4 | `index.html` | `<link rel="manifest" href="manifest.webmanifest?v=X.Y.Z">` (line 20) | **often stale** — verify |
+| 5 | `README.md` embed snippet | `widget.js?v=X.Y.Z` under **How to Embed** | **often stale** — verify |
 
 - Vite already gives content-hashed asset filenames (`assets/*.hash.js`), so JS/CSS
   cache busting is automatic — no manual step there.
-- The 4 items above are the ones humans forget. **Grep the repo for the old
+- The items above are the ones humans forget. **Grep the repo for the old
   version string before deploying** to prove none are left behind.
+- `dist/widget.js` is a **stable filename**. Sites that hotlink it must use
+  `?v=X.Y.Z` (or hard-refresh) or they will keep a cached widget forever.
 
 ```bash
 # From repo root — replace OLD and NEW with the actual versions
-grep -rn "3\.1\.62" src/App.tsx public/sw.js index.html package.json
+grep -rn "3\.1\.98" src/version.ts public/sw.js index.html package.json README.md
 ```
 
 ---
@@ -147,6 +152,7 @@ npm run build:release   # builds + writes trust/release-manifest.json + SHA256SU
 - [ ] `src/version.ts` `APP_VERSION` bumped (and shows in About)
 - [ ] `public/sw.js` `CACHE_NAME` bumped
 - [ ] `index.html` manifest `?v=` bumped
+- [ ] `README.md` embed `widget.js?v=` bumped
 - [ ] `public/trust/canary.txt` dates bumped (weekly)
 - [ ] `ABOUT_CHANGELOG` has a new top entry
 - [ ] `README.md` Changelog has a new top entry

@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.1.99" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -37,6 +37,8 @@ Add the following script tag before the closing `</body>` tag of your site:
   async>
 </script>
 ```
+
+> **Cache bust:** bump the `?v=` query to match each ETHOS release (`package.json` / `src/version.ts`). Without it, browsers may keep an old `widget.js`.
 
 ### Configuration Options
 
@@ -319,6 +321,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.99 – Widget Script Cache Bust (2026-09-20)
+- Documented `widget.js?v=` on the README embed snippet (must match each release) so hotlinked widgets are not stuck on a cached bundle.
+- Deploy checklist includes the widget embed query as a required cache-bust touchpoint.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.98 – Widget Version & Connection Status (2026-09-20)
 - Widget footer shows build version (`ETHOS widget v… · GitHub`); header polls owner transport for Connecting… / Direct / Relay / Offline.
 - `APP_VERSION` is shared via `src/version.ts` for app and widget.

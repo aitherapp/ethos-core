@@ -92,6 +92,16 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.1.99',
+    title: 'Widget Script Cache Bust',
+    date: '2026-09-20',
+    changes: [
+      'README embed snippet uses widget.js?v= matching the release so browsers do not keep a stale widget bundle.',
+      'Deploy checklist now requires bumping the widget embed ?v= alongside app/SW/manifest cache keys.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
     version: '3.1.98',
     title: 'Widget Version & Connection Status',
     date: '2026-09-20',
