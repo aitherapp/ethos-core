@@ -61,6 +61,7 @@ import {
   isValidUserIceServer,
   type UserIceServer,
 } from './lib/iceServers';
+import { APP_VERSION } from './version';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -88,9 +89,6 @@ const playNote = (freq: number, duration: number, type: OscillatorType = 'sine')
 
 const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
-
-// Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.97';
 
 const ABOUT_CHANGELOG = [
   {

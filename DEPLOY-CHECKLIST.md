@@ -28,7 +28,7 @@ The canonical version is the one in `package.json` (`"version"`).
 | # | File | What to change | Current (as of last check) |
 |---|------|----------------|----------------------------|
 | 1 | `package.json` | `"version": "X.Y.Z"` | canonical source |
-| 2 | `src/App.tsx` | `const APP_VERSION = 'X.Y.Z';` (line ~78) | **often stale** — verify |
+| 2 | `src/version.ts` | `export const APP_VERSION = 'X.Y.Z';` | **often stale** — verify |
 | 3 | `public/sw.js` | `const CACHE_NAME = 'ethos-vX.Y.Z';` (line 1) | **often stale** — verify |
 | 4 | `index.html` | `<link rel="manifest" href="manifest.webmanifest?v=X.Y.Z">` (line 20) | **often stale** — verify |
 
