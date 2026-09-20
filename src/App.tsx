@@ -92,6 +92,17 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.1.100',
+    title: 'Widget Wake Then Deliver',
+    date: '2026-09-20',
+    changes: [
+      'Widget push wake-ups now wait for a usable tunnel and retry send, so a notification is not left without the actual message.',
+      'Peer send only fires remote push after ciphertext is on a live direct/relay transport.',
+      'Undelivered widget messages are marked in the visitor chat instead of looking successful.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
     version: '3.1.99',
     title: 'Widget Script Cache Bust',
     date: '2026-09-20',

@@ -2229,7 +2229,19 @@ export class IrohManager {
     this.ratchetStates.set(peerId, state);
     
     const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
-    if (!options.skipPush) {
+    let delivered = false;
+    if (conn?.connected) {
+      conn.send(JSON.stringify({ ...msg, encrypted: true }));
+      delivered = true;
+    } else if (this.relayStatus.get(peerId) === 'connected') {
+      await this.sendRelayData(peerId, { ...msg, encrypted: true });
+      delivered = true;
+    } else {
+      this.ensureRelayHandshake(peerId);
+      return null;
+    }
+    // Push is wake-only; never notify before ciphertext is on a live transport.
+    if (delivered && !options.skipPush) {
       const peerProfile = this.getPeerPushProfile(peerId);
       notifyPeerViaGateway(peerProfile, {
         senderName: this.identity?.displayName || 'ETHOS Peer',
@@ -2239,14 +2251,6 @@ export class IrohManager {
         directConnected: Boolean(conn?.connected),
         relayConnected: this.relayStatus.get(peerId) === 'connected',
       }).catch(() => {});
-    }
-    if (conn?.connected) {
-      conn.send(JSON.stringify({ ...msg, encrypted: true }));
-    } else if (this.relayStatus.get(peerId) === 'connected') {
-      await this.sendRelayData(peerId, { ...msg, encrypted: true });
-    } else {
-      this.ensureRelayHandshake(peerId);
-      return null;
     }
     return { ...msg, content: text };
   }

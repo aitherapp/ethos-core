@@ -5,6 +5,7 @@ import { notifyPeerViaGateway, type NotifyPushProfile } from '../lib/peerPush';
 import { SecureMessage } from '../types';
 import type { PushContentMode, PushTriggerMode } from '../lib/pushSettings';
 import { mapTransportModeToWidgetStatus } from './connectionStatus';
+import { deliverWidgetOutbound } from './deliverOutbound';
 
 function resolveOwnerPushProfile(
   script: HTMLScriptElement,
@@ -105,7 +106,7 @@ function resolveOwnerPushProfile(
       const text = ui.inputField.value.trim();
       if (!text) return;
 
-      // Render locally
+      // Render locally (may be marked failed if delivery never lands)
       const msgEl = document.createElement('div');
       msgEl.className = 'ethos-msg visitor';
       msgEl.textContent = text;
@@ -128,23 +129,44 @@ function resolveOwnerPushProfile(
         }).catch(() => false);
       };
 
-      let sent: Awaited<ReturnType<typeof iroh.sendMessage>> = null;
-      if (isInitialMessage) {
-        const payload = createWidgetPayload(
-          visitorId,
-          window.location.pathname || '/',
-          document.referrer || '',
-          text
-        );
-        // skipPush: widget owns the wake-up notify so Background-only + stale
-        // transport flags cannot drop the only path that reaches a backgrounded iPhone.
-        sent = await iroh.sendMessage(ownerTicket, JSON.stringify(payload), { skipPush: true });
-        isInitialMessage = false;
-      } else {
-        sent = await iroh.sendMessage(ownerTicket, text, { skipPush: true });
-      }
+      const isTransportUsable = () => {
+        const transport =
+          iroh.getPeerTransportStatus(ownerTicket) ||
+          iroh.getPeerTransportStatus(ownerPeerId);
+        return Boolean(transport?.usable);
+      };
 
-      await notifyOwner(sent?.id ?? `widget-${Date.now()}`);
+      const sendOnce = async () => {
+        if (isInitialMessage) {
+          const payload = createWidgetPayload(
+            visitorId,
+            window.location.pathname || '/',
+            document.referrer || '',
+            text
+          );
+          // skipPush: deliverWidgetOutbound owns wake so we can retry after the phone opens.
+          const sent = await iroh.sendMessage(ownerTicket, JSON.stringify(payload), { skipPush: true });
+          if (sent) isInitialMessage = false;
+          return sent;
+        }
+        return iroh.sendMessage(ownerTicket, text, { skipPush: true });
+      };
+
+      const result = await deliverWidgetOutbound({
+        isTransportUsable,
+        wake: async (messageId) => {
+          const ok = await notifyOwner(messageId);
+          // Nudge signaling while the owner opens from the push.
+          iroh.connectByTicket(ownerTicket).catch(() => {});
+          return ok;
+        },
+        send: sendOnce,
+      });
+
+      if (!result.ok) {
+        msgEl.textContent = `${text} (not delivered — owner may be offline)`;
+        msgEl.style.opacity = '0.55';
+      }
     };
 
     ui.sendButton.addEventListener('click', handleSend);

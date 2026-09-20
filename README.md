@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.1.99" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.1.100" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.100 – Widget Wake Then Deliver (2026-09-20)
+- If the owner is asleep, the widget wakes via push, waits for a usable tunnel, then retries send so notifications are not orphaned without ciphertext.
+- Peer `sendMessage` only requests remote push after the encrypted payload is on a live direct/relay transport.
+- Failed widget deliveries are marked in the visitor UI instead of looking successful.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.99 – Widget Script Cache Bust (2026-09-20)
 - Documented `widget.js?v=` on the README embed snippet (must match each release) so hotlinked widgets are not stuck on a cached bundle.
 - Deploy checklist includes the widget embed query as a required cache-bust touchpoint.
