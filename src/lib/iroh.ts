@@ -2297,7 +2297,7 @@ export class IrohManager {
   }
 
   async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean } = {}) {
-    const attempt = async (): Promise<{ id: string; senderId: string; receiverId: string; type: 'text'; content: string; iv: string; timestamp: number; expiresAt?: number } | null> => {
+    const attempt = async (): Promise<SecureMessage | null> => {
       const conn = this.connections.get(peerId);
       const ratchetState = this.ratchetStates.get(peerId);
       const relayLive = this.relayStatus.get(peerId) === 'connected' && this.isPeerLive(peerId);
@@ -2314,7 +2314,16 @@ export class IrohManager {
       const { ciphertext, iv, state } = await ratchetEncrypt(ratchetState, text);
       this.ratchetStates.set(peerId, state);
 
-      const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
+      const msg: SecureMessage = {
+        id: uuidv4(),
+        senderId: this.identity!.id,
+        receiverId: peerId,
+        type: 'text',
+        content: ciphertext,
+        iv,
+        timestamp: Date.now(),
+        expiresAt: options.ephemeral ? Date.now() + 60000 : undefined,
+      };
       let delivered = false;
       if (conn?.connected) {
         conn.send(JSON.stringify({ ...msg, encrypted: true }));
