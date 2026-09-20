@@ -319,6 +319,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.98 – Widget Version & Connection Status (2026-09-20)
+- Widget footer shows build version (`ETHOS widget v… · GitHub`); header polls owner transport for Connecting… / Direct / Relay / Offline.
+- `APP_VERSION` is shared via `src/version.ts` for app and widget.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.97 – Notification Deep-Link Opens Chat (2026-09-20)
 - `#/chat/…` notification links mount the chat app (previously only `#app` did, so taps could land on the landing page).
 - Service worker stashes deep-link peer/message ids for iOS PWA start_url opens.

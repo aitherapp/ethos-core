@@ -92,6 +92,16 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.1.98',
+    title: 'Widget Version & Connection Status',
+    date: '2026-09-20',
+    changes: [
+      'Embeddable widget footer shows the build version (ETHOS widget v…) so site owners know which release they are serving.',
+      'Widget header shows live peer transport: Connecting…, Direct, Relay, or Offline (replacing the static green “online” dot).',
+      'Shared APP_VERSION lives in src/version.ts for the main app and widget; bumped app and service-worker cache version.',
+    ],
+  },
+  {
     version: '3.1.97',
     title: 'Notification Deep-Link Opens Chat',
     date: '2026-09-20',

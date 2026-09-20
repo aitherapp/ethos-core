@@ -144,7 +144,7 @@ npm run build:release   # builds + writes trust/release-manifest.json + SHA256SU
 ## Quick "did I forget anything?" recap
 
 - [ ] `package.json` version bumped
-- [ ] `src/App.tsx` `APP_VERSION` bumped (and shows in About)
+- [ ] `src/version.ts` `APP_VERSION` bumped (and shows in About)
 - [ ] `public/sw.js` `CACHE_NAME` bumped
 - [ ] `index.html` manifest `?v=` bumped
 - [ ] `public/trust/canary.txt` dates bumped (weekly)
