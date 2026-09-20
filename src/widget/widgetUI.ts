@@ -1,3 +1,9 @@
+import { APP_VERSION } from '../version';
+import {
+  type WidgetConnectionStatus,
+  widgetStatusDotClass,
+  widgetStatusLabel,
+} from './connectionStatus';
 import { WidgetConfig } from './widgetCore';
 
 export interface WidgetUI {
@@ -8,6 +14,7 @@ export interface WidgetUI {
   messageLog: HTMLElement;
   inputField: HTMLInputElement;
   sendButton: HTMLButtonElement;
+  setConnectionStatus: (status: WidgetConnectionStatus) => void;
 }
 
 export function createWidgetDOM(config: WidgetConfig): WidgetUI {
@@ -100,10 +107,13 @@ export function createWidgetDOM(config: WidgetConfig): WidgetUI {
     .ethos-online-dot {
       width: 8px;
       height: 8px;
-      background: #22c55e;
       border-radius: 50%;
       display: inline-block;
     }
+    .ethos-online-dot--connecting { background: #f59e0b; }
+    .ethos-online-dot--direct { background: #22c55e; }
+    .ethos-online-dot--relay { background: #3b82f6; }
+    .ethos-online-dot--offline { background: #9ca3af; }
 
     .ethos-messages {
       flex: 1;
@@ -199,10 +209,19 @@ export function createWidgetDOM(config: WidgetConfig): WidgetUI {
     <div>
       <div class="ethos-header-title">${config.title}</div>
       <div class="ethos-header-subtitle">
-        <span class="ethos-online-dot"></span> End-to-end encrypted
+        <span class="ethos-online-dot ethos-online-dot--connecting"></span>
+        <span class="ethos-header-status-text">Connecting…</span>
       </div>
     </div>
   `;
+
+  const statusDot = header.querySelector('.ethos-online-dot') as HTMLSpanElement;
+  const statusText = header.querySelector('.ethos-header-status-text') as HTMLSpanElement;
+
+  function setConnectionStatus(status: WidgetConnectionStatus): void {
+    statusDot.className = widgetStatusDotClass(status);
+    statusText.textContent = widgetStatusLabel(status);
+  }
 
   const messageLog = document.createElement('div');
   messageLog.className = 'ethos-messages';
@@ -231,7 +250,7 @@ export function createWidgetDOM(config: WidgetConfig): WidgetUI {
   const footer = document.createElement('div');
   footer.className = 'ethos-footer';
   footer.innerHTML = `
-    E T H O S by aitherapp · <a href="https://github.com/aitherapp/ethos-core" target="_blank" rel="noopener noreferrer">GitHub</a>
+    ETHOS widget v${APP_VERSION} · <a href="https://github.com/aitherapp/ethos-core" target="_blank" rel="noopener noreferrer">GitHub</a>
   `;
 
   chatWindow.appendChild(header);
@@ -255,5 +274,6 @@ export function createWidgetDOM(config: WidgetConfig): WidgetUI {
     messageLog,
     inputField,
     sendButton,
+    setConnectionStatus,
   };
 }
