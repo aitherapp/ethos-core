@@ -4,6 +4,7 @@ import {
   shouldSendRemotePush,
   buildNotificationData,
   resolveNotificationDeepLink,
+  isWakePlaceholderMessageId,
 } from '../src/lib/pushNotify';
 
 describe('pushNotify', () => {
@@ -75,5 +76,10 @@ describe('pushNotify', () => {
       resolveNotificationDeepLink({ url: './#/chat/peerABC/msg123' })
     ).toEqual({ peerId: 'peerABC', messageId: 'msg123' });
     expect(resolveNotificationDeepLink({ url: './' })).toBeNull();
+  });
+
+  it('detects widget wake placeholder message ids', () => {
+    expect(isWakePlaceholderMessageId('widget-wake-123')).toBe(true);
+    expect(isWakePlaceholderMessageId('msg-uuid')).toBe(false);
   });
 });

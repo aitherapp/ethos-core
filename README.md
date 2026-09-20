@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.1" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.2" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.2 – Unread Markers & Push Deep-Links (2026-09-20)
+- Notification clicks always deliver the deep link via postMessage (and re-read the iOS stash on focus).
+- Widget wake retries include the real message id; peer list unread dots plus a “New messages” divider in chat.
+- Local widget notifications carry deep-link data; refreshed app and service-worker cache versions.
+
 ### v3.2.1 – Deploy Lint Fix (2026-09-20)
 - Fixed TypeScript error in `widgetDeliverOutbound` test that blocked the v3.2.0 Pages deploy.
 - Refreshed app and service-worker cache versions.

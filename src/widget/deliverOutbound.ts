@@ -37,6 +37,8 @@ export async function deliverWidgetOutbound(
 
   sent = await deps.send();
   if (sent) {
+    // Second wake carries the real message id so notification clicks can deep-link.
+    await deps.wake(sent.id);
     return { ok: true, messageId: sent.id };
   }
   return { ok: false };

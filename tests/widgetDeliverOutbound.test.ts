@@ -38,8 +38,9 @@ describe('deliverWidgetOutbound', () => {
     });
 
     expect(result).toEqual({ ok: true, messageId: 'msg-2' });
-    expect(wake).toHaveBeenCalledTimes(1);
-    expect(wake).toHaveBeenCalledWith(expect.stringMatching(/^widget-wake-/));
+    expect(wake).toHaveBeenCalledTimes(2);
+    expect(wake).toHaveBeenNthCalledWith(1, expect.stringMatching(/^widget-wake-/));
+    expect(wake).toHaveBeenNthCalledWith(2, 'msg-2');
     expect(send).toHaveBeenCalledTimes(2);
   });
 

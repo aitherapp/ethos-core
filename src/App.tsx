@@ -48,9 +48,21 @@ import {
 } from './lib/pushSettings';
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
-import { parseChatDeepLink, resolveNotificationDeepLink } from './lib/pushNotify';
+import {
+  buildNotificationData,
+  isWakePlaceholderMessageId,
+  parseChatDeepLink,
+  resolveNotificationDeepLink,
+} from './lib/pushNotify';
 import { getAppLaunchHash } from './lib/appRoute';
 import { consumeStashedChatDeepLink } from './lib/deepLinkStash';
+import {
+  countUnread,
+  firstUnreadMessageId,
+  loadLastReadMap,
+  saveLastRead,
+  type LastReadMap,
+} from './lib/unreadMarkers';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -91,6 +103,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.2.2',
+    title: 'Unread Markers & Push Deep-Links',
+    date: '2026-09-20',
+    changes: [
+      'Notification clicks always postMessage the deep link (navigate no longer skips it) and re-consume the iOS stash on focus.',
+      'Widget wake retries send a second push with the real message id; wake placeholders open the peer chat instead of waiting forever.',
+      'Peer list shows unread dots/counts; chat threads show an English “New messages” divider above the first unread inbound message.',
+      'Local widget notifications include peer/message deep-link data.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.2.1',
     title: 'Deploy Lint Fix',
@@ -921,6 +945,8 @@ export default function App() {
   const pendingJumpNoticeRef = useRef(false);
   const [pendingDeepLink, setPendingDeepLink] = useState<{ peerId: string; messageId: string } | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [lastReadMap, setLastReadMap] = useState<LastReadMap>({});
+  const [newMessagesAnchorId, setNewMessagesAnchorId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageHistoryStoreRef = useRef(new IndexedDbMessageHistoryStore());
   const messageHistoryContextRef = useRef<{ identityMaterial: string; nodeId: string; lockSecret?: string } | null>(null);
@@ -1012,6 +1038,10 @@ export default function App() {
         iroh.setPeerDisplayName(msg.senderId, visitorLabel);
         sendLocalNotification(`New chat from ${widgetMeta.visitorId}`, {
           body: `[${widgetMeta.page}] ${widgetMeta.message}`,
+          data: buildNotificationData({
+            peerId: msg.senderId,
+            messageId: processedMsg.id,
+          }),
         });
       }
 
@@ -1114,11 +1144,31 @@ export default function App() {
     setActiveGroup(null);
     setMobilePanel('chat');
     pendingJumpNoticeRef.current = false;
-    shouldAutoScrollRef.current = false;
     if (!peersRef.current.includes(peerId)) {
       iroh.notifyStatus('info', `Re-connecting to ${peerId.slice(0, 8)}...`);
       iroh.connectByTicket(peerId);
     }
+
+    // Widget wake pushes use a synthetic id before ciphertext exists — open the peer only.
+    if (isWakePlaceholderMessageId(messageId)) {
+      shouldAutoScrollRef.current = true;
+      setPendingDeepLink(null);
+      if (parseChatDeepLink(window.location.hash)) {
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${window.location.search}${getAppLaunchHash()}`
+        );
+      }
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+      return;
+    }
+
+    shouldAutoScrollRef.current = false;
     const hash = `#/chat/${peerId}/${messageId}`;
     if (window.location.hash !== hash) {
       window.history.replaceState(null, '', hash);
@@ -1134,24 +1184,40 @@ export default function App() {
     };
     fromHash();
 
+    const tryConsumeStash = () => {
+      void consumeStashedChatDeepLink().then((stashed) => {
+        if (stashed) applyChatDeepLink(stashed.peerId, stashed.messageId);
+      });
+    };
+
     const onSwMessage = (event: MessageEvent) => {
       if (event.data?.type !== 'ethos_notification_open') return;
       const resolved = resolveNotificationDeepLink(
         event.data as { peerId?: string; messageId?: string; url?: string }
       );
-      if (resolved) applyChatDeepLink(resolved.peerId, resolved.messageId);
+      if (resolved) {
+        applyChatDeepLink(resolved.peerId, resolved.messageId);
+      } else {
+        tryConsumeStash();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tryConsumeStash();
     };
 
     // iOS home-screen launches often ignore openWindow and use manifest start_url (#app).
-    // The service worker stashes the deep link so we can still jump after boot.
-    void consumeStashedChatDeepLink().then((stashed) => {
-      if (stashed) applyChatDeepLink(stashed.peerId, stashed.messageId);
-    });
+    // The service worker stashes the deep link so we can still jump after boot / focus.
+    tryConsumeStash();
 
     window.addEventListener('hashchange', fromHash);
+    window.addEventListener('focus', tryConsumeStash);
+    document.addEventListener('visibilitychange', onVisible);
     navigator.serviceWorker?.addEventListener('message', onSwMessage);
     return () => {
       window.removeEventListener('hashchange', fromHash);
+      window.removeEventListener('focus', tryConsumeStash);
+      document.removeEventListener('visibilitychange', onVisible);
       navigator.serviceWorker?.removeEventListener('message', onSwMessage);
     };
   }, [applyChatDeepLink]);
@@ -1215,6 +1281,37 @@ export default function App() {
       scrollChatToBottom();
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!identity?.id) return;
+    setLastReadMap(loadLastReadMap(identity.id));
+  }, [identity?.id]);
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const lastReadMapRef = useRef(lastReadMap);
+  lastReadMapRef.current = lastReadMap;
+
+  // Capture "New messages" divider when opening a peer; mark conversation read.
+  useEffect(() => {
+    if (!identity?.id || !activePeer || mobilePanel !== 'chat') {
+      if (!activePeer) setNewMessagesAnchorId(null);
+      return;
+    }
+    const prevRead = lastReadMapRef.current[activePeer];
+    const anchor =
+      prevRead != null
+        ? firstUnreadMessageId(messagesRef.current, activePeer, prevRead, identity.id)
+        : null;
+    setNewMessagesAnchorId(anchor);
+    setLastReadMap(saveLastRead(identity.id, activePeer, Date.now()));
+  }, [activePeer, mobilePanel, identity?.id]);
+
+  // Keep last-read fresh while the chat is open so the peer badge stays clear.
+  useEffect(() => {
+    if (!identity?.id || !activePeer || mobilePanel !== 'chat') return;
+    setLastReadMap(saveLastRead(identity.id, activePeer, Date.now()));
+  }, [messages, activePeer, mobilePanel, identity?.id]);
 
   const handleConnect = async () => {
     if (newPeerId.trim()) {
@@ -1802,6 +1899,10 @@ export default function App() {
               {filteredPeers.map(peerId => {
                 const isFailed = iroh.getFailedPeers().includes(peerId);
                 const transport = iroh.getPeerTransportStatus(peerId);
+                const unread =
+                  identity
+                    ? countUnread(messages, peerId, lastReadMap[peerId] ?? 0, identity.id)
+                    : 0;
                 return (
                   <div
                     key={peerId}
@@ -1850,7 +1951,22 @@ export default function App() {
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    {activePeer === peerId && <div className="w-1.5 h-1.5 bg-brand rounded-full"></div>}
+                    {unread > 0 ? (
+                      <span
+                        className="flex items-center gap-1 shrink-0"
+                        title={`${unread} unread`}
+                        aria-label={`${unread} unread messages`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-brand" aria-hidden />
+                        {unread > 1 && (
+                          <span className="text-[9px] font-bold text-brand tabular-nums">
+                            {unread > 99 ? '99+' : unread}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      activePeer === peerId && <div className="w-1.5 h-1.5 bg-brand rounded-full"></div>
+                    )}
                   </div>
                 );
               })}
@@ -2055,8 +2171,21 @@ export default function App() {
                   if (activeGroup) return m.groupId === activeGroup;
                   return !m.groupId && (m.senderId === activePeer || m.receiverId === activePeer);
                 }).map((msg) => (
+                  <React.Fragment key={msg.id}>
+                    {!activeGroup && newMessagesAnchorId === msg.id && (
+                      <div
+                        className="flex items-center gap-3 py-1"
+                        role="separator"
+                        aria-label="New messages"
+                      >
+                        <div className="flex-1 h-px bg-brand/30" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-brand/80 whitespace-nowrap">
+                          New messages
+                        </span>
+                        <div className="flex-1 h-px bg-brand/30" />
+                      </div>
+                    )}
                   <div 
-                    key={msg.id}
                     id={`msg-${msg.id}`}
                     onAnimationEnd={(event) => {
                       if (
@@ -2189,6 +2318,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  </React.Fragment>
                 ))}
               </div>
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ethos-v3.2.1'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.2.2'; // Increment for cache busting
 const DEEP_LINK_STASH_CACHE = 'ethos-deeplink-v1';
 const DEEP_LINK_STASH_URL = './__ethos_pending_deeplink';
 const ASSETS = [
@@ -106,20 +106,20 @@ self.addEventListener('notificationclick', (event) => {
     for (const client of all) {
       if (!('focus' in client)) continue;
       await client.focus();
-      if (typeof client.navigate === 'function') {
-        try {
-          await client.navigate(targetUrl);
-          return;
-        } catch (_) {
-          /* fall through */
-        }
-      }
+      // Always postMessage — navigate can no-op on PWAs and must not skip the deep link.
       client.postMessage({
         type: 'ethos_notification_open',
         peerId: data.peerId,
         messageId: data.messageId,
         url: data.url || targetUrl,
       });
+      if (typeof client.navigate === 'function') {
+        try {
+          await client.navigate(targetUrl);
+        } catch (_) {
+          /* hash/postMessage still applied above */
+        }
+      }
       return;
     }
     if (clients.openWindow) return clients.openWindow(targetUrl);
