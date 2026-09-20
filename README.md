@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.2" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.3" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.3 – Contact List Hygiene (2026-09-20)
+- Connecting to a peer no longer picks up their website widget visitors as your contacts.
+- Deleted contacts stay deleted (removal blocklist + disconnect) instead of reappearing from mesh discovery.
+- Refreshed app and service-worker cache versions.
+
 ### v3.2.2 – Unread Markers & Push Deep-Links (2026-09-20)
 - Notification clicks always deliver the deep link via postMessage (and re-read the iOS stash on focus).
 - Widget wake retries include the real message id; peer list unread dots plus a “New messages” divider in chat.

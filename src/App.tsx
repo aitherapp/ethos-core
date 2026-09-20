@@ -30,7 +30,7 @@ import { exportIdentity } from './lib/crypto';
 import { diagnosticsLog, installDiagnosticsConsoleCapture, DiagnosticEntry } from './lib/diagnostics';
 import { IndexedDbMessageHistoryStore, loadEncryptedMessageHistory, saveEncryptedMessageHistory } from './lib/messageHistory';
 import { getMobileNavItems, MobileNavItemId } from './lib/mobileNav';
-import { removePeerFromList } from './lib/peerList';
+import { forgetRemovedPeer, mergeDiscoveredPeers, rememberRemovedPeer, removePeerFromList } from './lib/peerList';
 import { isNearScrollBottom } from './lib/chatScroll';
 import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donations';
 import { validateHistoryPassphrase } from './lib/historyLock';
@@ -103,6 +103,16 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.2.3',
+    title: 'Contact List Hygiene',
+    date: '2026-09-20',
+    changes: [
+      'Connecting to a peer no longer adopts their website widget visitors as your contacts.',
+      'Removed contacts stay removed (blocklist + disconnect) instead of reappearing from mesh discovery.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.2.2',
     title: 'Unread Markers & Push Deep-Links',
@@ -764,6 +774,9 @@ export default function App() {
   const [activePeer, setActivePeer] = useState<string | null>(null);
   const [peers, setPeers] = useState<string[]>([]);
   const [knownPeers, setKnownPeers] = useState<string[]>([]);
+  const [removedPeers, setRemovedPeers] = useState<string[]>([]);
+  const removedPeersRef = useRef<string[]>([]);
+  removedPeersRef.current = removedPeers;
   const [transfers, setTransfers] = useState<FileTransfer[]>([]);
   const [newPeerId, setNewPeerId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -934,7 +947,8 @@ export default function App() {
     }
   };
 
-  const allPersistedPeers = [...new Set([...peers, ...knownPeers])];
+  const allPersistedPeers = [...new Set([...peers, ...knownPeers])]
+    .filter(id => !removedPeers.includes(id));
   const filteredPeers = allPersistedPeers.filter(id => 
     id.toLowerCase().includes(searchQuery.toLowerCase()) || 
     iroh.getPeerName(id)?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -986,10 +1000,24 @@ export default function App() {
       }
       isMessageHistoryReadyRef.current = true;
       
+      const savedRemoved = localStorage.getItem('nexus_removed_peers');
+      let removed: string[] = [];
+      if (savedRemoved) {
+        try {
+          removed = JSON.parse(savedRemoved);
+          setRemovedPeers(removed);
+        } catch (e) {}
+      }
+
       const savedPeers = localStorage.getItem('nexus_peer_list');
       if (savedPeers) {
         try {
-          setKnownPeers(JSON.parse(savedPeers));
+          const parsed = JSON.parse(savedPeers) as string[];
+          const cleaned = mergeDiscoveredPeers([], parsed, removed);
+          setKnownPeers(cleaned);
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('nexus_peer_list', JSON.stringify(cleaned));
+          }
         } catch (e) {}
       }
       
@@ -1064,12 +1092,10 @@ export default function App() {
       setPeers(prev => prev.includes(msg.senderId) ? prev : [...prev, msg.senderId]);
       if (msg.senderId !== identity?.id) playReceiveSound();
       setKnownPeers(prev => {
-        if (!prev.includes(msg.senderId)) {
-          const next = [...prev, msg.senderId];
-          localStorage.setItem('nexus_peer_list', JSON.stringify(next));
-          return next;
-        }
-        return prev;
+        if (removedPeersRef.current.includes(msg.senderId) || prev.includes(msg.senderId)) return prev;
+        const next = [...prev, msg.senderId];
+        localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+        return next;
       });
     });
 
@@ -1100,8 +1126,8 @@ export default function App() {
       setKnownPeers(prev => {
         const failed = iroh.getFailedPeers();
         const visible = iroh.getVisiblePeers();
-        const next = [...new Set([...prev, ...visible, ...failed])];
-        if (next.length !== prev.length) {
+        const next = mergeDiscoveredPeers(prev, [...visible, ...failed], removedPeersRef.current);
+        if (next.length !== prev.length || next.some((id, i) => id !== prev[i])) {
           localStorage.setItem('nexus_peer_list', JSON.stringify(next));
         }
         return next;
@@ -1341,7 +1367,16 @@ export default function App() {
       try {
         await iroh.connectByTicket(targetId);
         setNewPeerId('');
-        setKnownPeers(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
+        setRemovedPeers(prev => {
+          const next = forgetRemovedPeer(prev, targetId);
+          localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+          return next;
+        });
+        setKnownPeers(prev => {
+          const next = prev.includes(targetId) ? prev : [...prev, targetId];
+          localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+          return next;
+        });
         setShowAddPeer(false);
         // Stay in connecting state until secure direct/relay mode or error status fires
       } catch (err) {
@@ -1359,7 +1394,16 @@ export default function App() {
 
     try {
       await iroh.connectByTicket(targetId);
-      setKnownPeers(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
+      setRemovedPeers(prev => {
+        const next = forgetRemovedPeer(prev, targetId);
+        localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+        return next;
+      });
+      setKnownPeers(prev => {
+        const next = prev.includes(targetId) ? prev : [...prev, targetId];
+        localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+        return next;
+      });
       setNewPeerId('');
       setUnverifiedDiscovery(null);
     } catch (err) {
@@ -1591,6 +1635,12 @@ export default function App() {
   };
 
   const handleRemovePeer = (peerId: string) => {
+    iroh.forgetPeer(peerId);
+    setRemovedPeers(prev => {
+      const next = rememberRemovedPeer(prev, peerId);
+      localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+      return next;
+    });
     setKnownPeers(prev => {
       const next = removePeerFromList(prev, peerId);
       localStorage.setItem('nexus_peer_list', JSON.stringify(next));

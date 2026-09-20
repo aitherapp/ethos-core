@@ -8,6 +8,7 @@ import {
   selectConnectedPeers,
   selectSignalPublishRelays,
   selectVisiblePeers,
+  shouldProcessMeshSignalOnTopic,
   shouldStartConnectionAttempt,
   shouldAcceptRelayHello,
   shouldSendRelayHelloForSync,
@@ -138,6 +139,32 @@ describe('signaling helpers', () => {
       handshakenPeers: ['desktop-peer'],
       metadataPeers: ['desktop-peer'],
     })).toEqual(['desktop-peer']);
+  });
+
+  it('accepts inbound offers on our own signaling topic', () => {
+    expect(shouldProcessMeshSignalOnTopic({
+      topicId: 'owner-peer',
+      currentPeerId: 'owner-peer',
+      senderId: 'visitor-peer',
+    })).toBe(true);
+  });
+
+  it('ignores third-party offers overheard while subscribed to another peer topic', () => {
+    // Connecting to nisse subscribes us to nisse's topic; widget visitors also
+    // publish offers there. Those must not become our contacts.
+    expect(shouldProcessMeshSignalOnTopic({
+      topicId: 'nisse-peer',
+      currentPeerId: 'alice-peer',
+      senderId: 'visitor-peer',
+    })).toBe(false);
+  });
+
+  it('still accepts signals from the topic owner on a foreign topic', () => {
+    expect(shouldProcessMeshSignalOnTopic({
+      topicId: 'nisse-peer',
+      currentPeerId: 'alice-peer',
+      senderId: 'nisse-peer',
+    })).toBe(true);
   });
 
   it('keeps merely visible metadata peers out of the active connected set', () => {

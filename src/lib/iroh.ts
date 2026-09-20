@@ -425,6 +425,28 @@ export function shouldProcessWebRtcOffer(relayStatus: RelayConnectionStatus | un
   return relayStatus !== 'connected';
 }
 
+/**
+ * When we connect to peer X we also subscribe to X's Nostr topic (to exchange
+ * signaling). Widget visitors publish offers on the owner's topic too — those
+ * third-party signals must not be treated as inbound connection attempts to us.
+ * On a foreign topic, only accept signals from the topic owner.
+ */
+export function shouldProcessMeshSignalOnTopic({
+  topicId,
+  currentPeerId,
+  senderId,
+}: {
+  topicId: string;
+  currentPeerId: string | null | undefined;
+  senderId: string;
+}) {
+  if (!currentPeerId) return false;
+  if (topicId === currentPeerId) return true;
+  // Own relay-data topic is `${currentPeerId}:data`
+  if (topicId === buildRelayDataTopic(currentPeerId)) return true;
+  return senderId === topicId;
+}
+
 export function shouldStartConnectionAttempt(lastAttemptAt: number | undefined, now: number, cooldownMs: number) {
   return lastAttemptAt === undefined || now - lastAttemptAt >= cooldownMs;
 }
@@ -807,6 +829,16 @@ export class IrohManager {
               const signal = JSON.parse(decrypted);
 
               if (signal.senderId === this.currentPeerId) return;
+              if (!shouldProcessMeshSignalOnTopic({
+                topicId,
+                currentPeerId: this.currentPeerId,
+                senderId: signal.senderId,
+              })) {
+                console.debug(
+                  `[Nostr] Ignoring third-party ${signal.type} from ${signal.senderId.slice(0, 8)} on topic ${topicId.slice(0, 8)}`
+                );
+                return;
+              }
               this.recordPeerResponse(signal.senderId);
               const sessionLabel = signal.sessionId ? ` session=${signal.sessionId.slice(0, 8)}` : ' legacy-session';
               console.debug(`[Nostr] Mesh IN: ${signal.type} from ${signal.senderId.slice(0, 8)}${sessionLabel}`);
@@ -2390,6 +2422,37 @@ export class IrohManager {
 
   onMessage(callback: (msg: SecureMessage) => void) { this.onMessageCallback = callback; }
   getIdentity() { return this.identity; }
+
+  /** Drop local connection state so a removed contact cannot reappear via visibility polling. */
+  forgetPeer(peerId: string) {
+    const conn = this.connections.get(peerId);
+    if (conn) {
+      try { conn.destroy(); } catch {}
+    }
+    this.connections.delete(peerId);
+    this.pendingSignals.delete(peerId);
+    this.secrets.delete(peerId);
+    this.ratchetStates.delete(peerId);
+    this.handshakeStatus.delete(peerId);
+    this.peerMetadata.delete(peerId);
+    this.peerPks.delete(peerId);
+    this.connectionStatus.delete(peerId);
+    this.connectionAttemptStartedAt.delete(peerId);
+    this.signalSessions.delete(peerId);
+    this.relaySessions.delete(peerId);
+    this.establishedRelaySessions.delete(peerId);
+    this.relayStatus.delete(peerId);
+    this.relayConfirmed.delete(peerId);
+    this.relayHelloAcks.delete(peerId);
+    this.iceReconnectRetries.delete(peerId);
+    this.retryingPeers.delete(peerId);
+    const noResponseTimer = this.noResponseTimers.get(peerId);
+    if (noResponseTimer !== undefined) {
+      window.clearTimeout(noResponseTimer);
+      this.noResponseTimers.delete(peerId);
+    }
+    this.persistMetadata();
+  }
   getQuantumIdentity() { return this.qIdentity; }
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
