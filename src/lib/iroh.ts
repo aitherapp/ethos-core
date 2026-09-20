@@ -2217,7 +2217,7 @@ export class IrohManager {
     return { id: msgId, senderId: this.identity!.id, receiverId: groupId, groupId, type: 'text' as const, content: text, iv: '', timestamp, expiresAt };
   }
 
-  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean } = {}) {
+  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean } = {}) {
     const conn = this.connections.get(peerId);
     const ratchetState = this.ratchetStates.get(peerId);
     if (!ratchetState) {
@@ -2229,15 +2229,17 @@ export class IrohManager {
     this.ratchetStates.set(peerId, state);
     
     const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
-    const peerProfile = this.getPeerPushProfile(peerId);
-    notifyPeerViaGateway(peerProfile, {
-      senderName: this.identity?.displayName || 'ETHOS Peer',
-      previewText: text,
-      localPeerId: this.identity!.id,
-      messageId: msg.id,
-      directConnected: Boolean(conn?.connected),
-      relayConnected: this.relayStatus.get(peerId) === 'connected',
-    }).catch(() => {});
+    if (!options.skipPush) {
+      const peerProfile = this.getPeerPushProfile(peerId);
+      notifyPeerViaGateway(peerProfile, {
+        senderName: this.identity?.displayName || 'ETHOS Peer',
+        previewText: text,
+        localPeerId: this.identity!.id,
+        messageId: msg.id,
+        directConnected: Boolean(conn?.connected),
+        relayConnected: this.relayStatus.get(peerId) === 'connected',
+      }).catch(() => {});
+    }
     if (conn?.connected) {
       conn.send(JSON.stringify({ ...msg, encrypted: true }));
     } else if (this.relayStatus.get(peerId) === 'connected') {

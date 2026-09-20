@@ -319,6 +319,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.96 – Widget Owner Wake-Up (2026-09-20)
+- Widget → owner always requests a gateway push (does not trust zombie direct/relay flags on a backgrounded iPhone).
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.95 – Push Wake-Up Reliability (2026-09-20)
 - Background-only mode still requests remote push when only relay appears connected (stale relay no longer blocks iPhone wake-ups).
 - App startup reuses the existing Web Push subscription instead of rotating it every load; after enable, the endpoint is re-broadcast to peers.

@@ -101,30 +101,19 @@ function resolveOwnerPushProfile(
 
       ui.inputField.value = '';
 
-      const notifyOwner = () => {
+      const notifyOwner = (messageId: string) => {
         const ownerProfile = resolveOwnerPushProfile(currentScript, ownerTicket, ownerPeerId);
-        const transport =
-          iroh.getPeerTransportStatus(ownerTicket) ||
-          iroh.getPeerTransportStatus(ownerPeerId);
+        // Widget → site-owner is inherently a wake-up path. Do not trust zombie
+        // direct/relay flags on a backgrounded phone to suppress the gateway push.
         return notifyPeerViaGateway(ownerProfile, {
           senderName: visitorId,
           previewText: text,
           localPeerId: iroh.getIdentity()?.id || visitorId,
-          messageId: `widget-${Date.now()}`,
-          directConnected: transport?.mode === 'direct',
-          relayConnected: transport?.mode === 'relay',
-        }).catch(() => {});
+          messageId,
+          directConnected: false,
+          relayConnected: false,
+        }).catch(() => false);
       };
-
-      // If handshake already advertised a complete push profile, sendMessage notifies
-      // (even when transport delivery returns null). Skip widget fallback to avoid double-send.
-      const handshakeBefore =
-        iroh.getPeerPushProfile(ownerTicket) || iroh.getPeerPushProfile(ownerPeerId);
-      const hadHandshakePush = Boolean(
-        handshakeBefore?.pushGatewayUrl &&
-          handshakeBefore.pushAuthToken &&
-          handshakeBefore.pushSubscription
-      );
 
       let sent: Awaited<ReturnType<typeof iroh.sendMessage>> = null;
       if (isInitialMessage) {
@@ -134,17 +123,15 @@ function resolveOwnerPushProfile(
           document.referrer || '',
           text
         );
-        sent = await iroh.sendMessage(ownerTicket, JSON.stringify(payload));
+        // skipPush: widget owns the wake-up notify so Background-only + stale
+        // transport flags cannot drop the only path that reaches a backgrounded iPhone.
+        sent = await iroh.sendMessage(ownerTicket, JSON.stringify(payload), { skipPush: true });
         isInitialMessage = false;
       } else {
-        sent = await iroh.sendMessage(ownerTicket, text);
+        sent = await iroh.sendMessage(ownerTicket, text, { skipPush: true });
       }
 
-      // Cover first-message / no-ratchet races when sendMessage returns early
-      // without running its gateway notify path.
-      if (!sent && !hadHandshakePush) {
-        await notifyOwner();
-      }
+      await notifyOwner(sent?.id ?? `widget-${Date.now()}`);
     };
 
     ui.sendButton.addEventListener('click', handleSend);

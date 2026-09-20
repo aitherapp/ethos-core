@@ -88,9 +88,18 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.95';
+const APP_VERSION = '3.1.96';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.96',
+    title: 'Widget Owner Wake-Up',
+    date: '2026-09-20',
+    changes: [
+      'Site widget always requests a gateway push to wake the ETHOS owner, ignoring stale direct/relay “connected” flags on a backgrounded phone.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.95',
     title: 'Push Wake-Up Reliability',
