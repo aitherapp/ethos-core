@@ -49,6 +49,8 @@ import {
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
 import { parseChatDeepLink, resolveNotificationDeepLink } from './lib/pushNotify';
+import { getAppLaunchHash } from './lib/appRoute';
+import { consumeStashedChatDeepLink } from './lib/deepLinkStash';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -88,9 +90,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.96';
+const APP_VERSION = '3.1.97';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.97',
+    title: 'Notification Deep-Link Opens Chat',
+    date: '2026-09-20',
+    changes: [
+      'Tapping a push notification opens the chat app for #/chat/… deep links instead of the marketing landing page.',
+      'iOS home-screen launches stash the deep link so start_url (#app) still jumps to the right peer/message.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.96',
     title: 'Widget Owner Wake-Up',
@@ -1040,8 +1052,12 @@ export default function App() {
 
   const clearChatDeepLinkHash = () => {
     if (!parseChatDeepLink(window.location.hash)) return;
-    const next = `${window.location.pathname}${window.location.search}`;
-    window.history.replaceState(null, '', next || './');
+    // Return to the app hash so Root keeps the chat mounted (empty hash shows landing).
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}${getAppLaunchHash()}`
+    );
   };
 
   const applyChatDeepLink = useCallback((peerId: string, messageId: string) => {
@@ -1076,6 +1092,12 @@ export default function App() {
       );
       if (resolved) applyChatDeepLink(resolved.peerId, resolved.messageId);
     };
+
+    // iOS home-screen launches often ignore openWindow and use manifest start_url (#app).
+    // The service worker stashes the deep link so we can still jump after boot.
+    void consumeStashedChatDeepLink().then((stashed) => {
+      if (stashed) applyChatDeepLink(stashed.peerId, stashed.messageId);
+    });
 
     window.addEventListener('hashchange', fromHash);
     navigator.serviceWorker?.addEventListener('message', onSwMessage);

@@ -9,6 +9,11 @@ describe('app route helpers', () => {
     expect(shouldShowAppForHash('#security')).toBe(false);
   });
 
+  it('shows the chat app for notification deep-link hashes', () => {
+    expect(shouldShowAppForHash('#/chat/peerABC/msg123')).toBe(true);
+    expect(shouldShowAppForHash('#chat/peerABC/msg123')).toBe(true);
+  });
+
   it('uses a stable app launch hash for landing page calls to action', () => {
     expect(getAppLaunchHash()).toBe('#app');
   });

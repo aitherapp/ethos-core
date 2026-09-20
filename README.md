@@ -319,6 +319,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.97 – Notification Deep-Link Opens Chat (2026-09-20)
+- `#/chat/…` notification links mount the chat app (previously only `#app` did, so taps could land on the landing page).
+- Service worker stashes deep-link peer/message ids for iOS PWA start_url opens.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.96 – Widget Owner Wake-Up (2026-09-20)
 - Widget → owner always requests a gateway push (does not trust zombie direct/relay flags on a backgrounded iPhone).
 - Refreshed app and service-worker cache versions.

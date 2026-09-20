@@ -1,4 +1,6 @@
-const CACHE_NAME = 'ethos-v3.1.96'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.1.97'; // Increment for cache busting
+const DEEP_LINK_STASH_CACHE = 'ethos-deeplink-v1';
+const DEEP_LINK_STASH_URL = './__ethos_pending_deeplink';
 const ASSETS = [
   './',
   './index.html',
@@ -20,7 +22,7 @@ self.addEventListener('activate', (event) => {
     (async () => {
       const keys = await caches.keys();
       await Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME && key !== DEEP_LINK_STASH_CACHE).map((key) => caches.delete(key))
       );
       await self.clients.claim();
     })()
@@ -68,18 +70,50 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+async function stashNotificationDeepLink(data) {
+  if (!data?.peerId || !data?.messageId) return;
+  try {
+    const cache = await caches.open(DEEP_LINK_STASH_CACHE);
+    await cache.put(
+      DEEP_LINK_STASH_URL,
+      new Response(
+        JSON.stringify({ peerId: data.peerId, messageId: data.messageId, ts: Date.now() }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+  } catch (_) {
+    // Best-effort; openWindow / postMessage remain the primary paths.
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data || {};
-  const targetUrl = data.url
-    ? new URL(data.url, self.registration.scope).href
-    : self.registration.scope;
+  let targetUrl = self.registration.scope;
+  try {
+    if (data.url) {
+      targetUrl = new URL(data.url, self.registration.scope).href;
+    } else if (data.peerId && data.messageId) {
+      targetUrl = new URL(`./#/chat/${data.peerId}/${data.messageId}`, self.registration.scope).href;
+    }
+  } catch (_) {
+    targetUrl = self.registration.scope;
+  }
 
   event.waitUntil((async () => {
+    await stashNotificationDeepLink(data);
     const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of all) {
       if (!('focus' in client)) continue;
       await client.focus();
+      if (typeof client.navigate === 'function') {
+        try {
+          await client.navigate(targetUrl);
+          return;
+        } catch (_) {
+          /* fall through */
+        }
+      }
       client.postMessage({
         type: 'ethos_notification_open',
         peerId: data.peerId,
