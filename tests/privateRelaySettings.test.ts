@@ -11,24 +11,39 @@ import {
 describe('privateRelaySettings', () => {
   beforeEach(() => localStorage.clear());
 
-  it('defaults to disabled', () => {
+  it('defaults to disabled and not ready', () => {
     const s = loadPrivateRelaySettings();
     expect(s.enabled).toBe(false);
+    expect(s.ready).toBe(false);
     expect(s.relayUrl).toBe('');
     expect(s.authToken).toBe('');
   });
 
-  it('round-trips saved settings', () => {
+  it('round-trips saved settings including ready', () => {
     savePrivateRelaySettings({
       enabled: true,
+      ready: true,
       relayUrl: 'wss://relay.example.com',
       authToken: 'tok',
     });
     expect(loadPrivateRelaySettings()).toEqual({
       enabled: true,
+      ready: true,
       relayUrl: 'wss://relay.example.com',
       authToken: 'tok',
     });
+  });
+
+  it('treats legacy saves without ready as not ready', () => {
+    localStorage.setItem(
+      'ethos_private_relay_settings',
+      JSON.stringify({
+        enabled: true,
+        relayUrl: 'wss://relay.example.com',
+        authToken: 'tok',
+      })
+    );
+    expect(loadPrivateRelaySettings().ready).toBe(false);
   });
 
   it('accepts only wss relay URLs', () => {
@@ -55,6 +70,7 @@ describe('privateRelaySettings', () => {
       expect(
         privateRelaySaveAction({
           enabled: false,
+          ready: false,
           relayUrl: 'wss://relay.example.com',
           authToken: 'tok',
         })
@@ -65,6 +81,7 @@ describe('privateRelaySettings', () => {
       expect(
         privateRelaySaveAction({
           enabled: true,
+          ready: false,
           relayUrl: 'https://not-wss.example',
           authToken: 'tok',
         })
@@ -73,6 +90,7 @@ describe('privateRelaySettings', () => {
       expect(
         privateRelaySaveAction({
           enabled: true,
+          ready: false,
           relayUrl: 'wss://relay.example.com',
           authToken: '',
         })
@@ -83,6 +101,7 @@ describe('privateRelaySettings', () => {
       expect(
         privateRelaySaveAction({
           enabled: true,
+          ready: false,
           relayUrl: 'wss://relay.example.com',
           authToken: 'tok',
         })

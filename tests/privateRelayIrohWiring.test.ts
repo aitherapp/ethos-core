@@ -6,23 +6,40 @@ import {
   attemptPrivateRelayFromHandoff,
   attemptPrivateRelayFromSettings,
   clearedPrivateRelaySettings,
+  disabledPrivateRelaySettings,
 } from '../src/lib/privateRelayWiring';
 
+const DEFAULTS = [
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://nostr.mom',
+];
+
 describe('buildPrivateRelayHandshakeFields', () => {
-  it('returns empty when disabled', () => {
+  it('returns empty when disabled or not ready', () => {
     expect(
       buildPrivateRelayHandshakeFields({
         enabled: false,
+        ready: false,
+        relayUrl: 'wss://r.example',
+        authToken: 'tok',
+      })
+    ).toEqual({});
+    expect(
+      buildPrivateRelayHandshakeFields({
+        enabled: true,
+        ready: false,
         relayUrl: 'wss://r.example',
         authToken: 'tok',
       })
     ).toEqual({});
   });
 
-  it('returns url and token when enabled', () => {
+  it('returns url and token when enabled and ready', () => {
     expect(
       buildPrivateRelayHandshakeFields({
         enabled: true,
+        ready: true,
         relayUrl: 'wss://r.example',
         authToken: 'tok',
       })
@@ -52,7 +69,7 @@ describe('mergeSignalHandshakeFields', () => {
 });
 
 describe('applyPrivateRelaySwitchResult', () => {
-  it('calls setRelays on success', () => {
+  it('calls setRelays with soft on success', () => {
     const setRelays = vi.fn();
     const notifyStatus = vi.fn();
     const ok = applyPrivateRelaySwitchResult(
@@ -60,7 +77,9 @@ describe('applyPrivateRelaySwitchResult', () => {
       { setRelays, notifyStatus }
     );
     expect(ok).toBe(true);
-    expect(setRelays).toHaveBeenCalledWith(['wss://r.example/?token=tok']);
+    expect(setRelays).toHaveBeenCalledWith(['wss://r.example/?token=tok'], {
+      soft: true,
+    });
     expect(notifyStatus).not.toHaveBeenCalled();
   });
 
@@ -85,7 +104,7 @@ describe('applyPrivateRelaySwitchResult', () => {
 });
 
 describe('attemptPrivateRelayFromHandoff', () => {
-  it('probes once then switches pool when connect succeeds', async () => {
+  it('probes once then switches private-only when connect succeeds', async () => {
     const setRelays = vi.fn();
     const notifyStatus = vi.fn();
     const probeConnect = vi.fn(async () => true);
@@ -98,7 +117,9 @@ describe('attemptPrivateRelayFromHandoff', () => {
     expect(ok).toBe(true);
     expect(probeConnect).toHaveBeenCalledTimes(1);
     expect(probeConnect).toHaveBeenCalledWith('wss://r.example/?token=tok');
-    expect(setRelays).toHaveBeenCalledWith(['wss://r.example/?token=tok']);
+    expect(setRelays).toHaveBeenCalledWith(['wss://r.example/?token=tok'], {
+      soft: true,
+    });
   });
 
   it('probes once and does not switch when connect fails', async () => {
@@ -130,10 +151,11 @@ describe('attemptPrivateRelayFromSettings', () => {
     const ok = await attemptPrivateRelayFromSettings(
       {
         enabled: false,
+        ready: false,
         relayUrl: 'wss://r.example',
         authToken: 'tok',
       },
-      { setRelays, notifyStatus, probeConnect }
+      { setRelays, notifyStatus, probeConnect, defaultRelays: DEFAULTS }
     );
 
     expect(ok).toBe(false);
@@ -141,7 +163,7 @@ describe('attemptPrivateRelayFromSettings', () => {
     expect(setRelays).not.toHaveBeenCalled();
   });
 
-  it('applies when enabled with valid wss+token', async () => {
+  it('owner apply builds dual-homed list without requiring ready', async () => {
     const setRelays = vi.fn();
     const notifyStatus = vi.fn();
     const probeConnect = vi.fn(async () => true);
@@ -149,14 +171,41 @@ describe('attemptPrivateRelayFromSettings', () => {
     const ok = await attemptPrivateRelayFromSettings(
       {
         enabled: true,
+        ready: false,
         relayUrl: 'wss://r.example',
         authToken: 'tok',
       },
-      { setRelays, notifyStatus, probeConnect }
+      { setRelays, notifyStatus, probeConnect, defaultRelays: DEFAULTS }
     );
 
     expect(ok).toBe(true);
-    expect(setRelays).toHaveBeenCalledWith(['wss://r.example/?token=tok']);
+    expect(setRelays).toHaveBeenCalledWith(
+      [...DEFAULTS, 'wss://r.example/?token=tok'],
+      { soft: true }
+    );
+  });
+
+  it('does not switch pool when probe fails', async () => {
+    const setRelays = vi.fn();
+    const notifyStatus = vi.fn();
+    const probeConnect = vi.fn(async () => false);
+
+    const ok = await attemptPrivateRelayFromSettings(
+      {
+        enabled: true,
+        ready: false,
+        relayUrl: 'wss://r.example',
+        authToken: 'tok',
+      },
+      { setRelays, notifyStatus, probeConnect, defaultRelays: DEFAULTS }
+    );
+
+    expect(ok).toBe(false);
+    expect(setRelays).not.toHaveBeenCalled();
+    expect(notifyStatus).toHaveBeenCalledWith(
+      'warning',
+      'Private relay unavailable'
+    );
   });
 });
 
@@ -164,8 +213,27 @@ describe('clearedPrivateRelaySettings', () => {
   it('returns disabled empty settings for reset', () => {
     expect(clearedPrivateRelaySettings()).toEqual({
       enabled: false,
+      ready: false,
       relayUrl: '',
       authToken: '',
+    });
+  });
+});
+
+describe('disabledPrivateRelaySettings', () => {
+  it('clears ready and enabled while keeping url/token for the form', () => {
+    expect(
+      disabledPrivateRelaySettings({
+        enabled: true,
+        ready: true,
+        relayUrl: 'wss://r.example',
+        authToken: 'tok',
+      })
+    ).toEqual({
+      enabled: false,
+      ready: false,
+      relayUrl: 'wss://r.example',
+      authToken: 'tok',
     });
   });
 });

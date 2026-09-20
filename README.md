@@ -104,15 +104,17 @@ Public Nostr relays bootstrap signaling and encrypted fallback, but operators ca
 
 Message and file payloads stay end-to-end encrypted on either path; a private relay mainly reduces dependence on shared public infrastructure.
 
+v1 note: the active Nostr pool is **process-wide** (not per-relationship). The owner stays **dual-homed** (public defaults + private) after Save so new peers can still bootstrap; peers switch to **private-only** after a successful handoff.
+
 ### Enable for peer chat (owner + peer)
 
 1. **Peer:** Open ETHOS → **Settings** and turn on **Pkarr DHT** (nickname discovery). Find the relay owner via DHT search or an existing node ticket.
 2. **Owner:** Deploy a relay (pick one path):
    - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`relay/README.md`](relay/README.md). After deploy, **open your Worker URL**, copy the relay WebSocket URL (`wss://…`) and auth token from the setup page, then paste them into ETHOS before the token is dismissed.
    - **Any host:** Run any `wss` service that implements the same ETHOS private-relay Nostr contract (auth token, kinds `41002` / `41003`, size and rate limits). See [`relay/README.md`](relay/README.md) for the wire protocol and security defaults.
-3. **Owner:** In **Settings**, enable **private relay**, paste **Relay URL** and **Auth token**, then **Save Changes**.
-4. **Connect:** Peers bootstrap on **public Nostr** first (signaling only). After the secure session is up, the owner’s relay URL and token are sent over **E2EE handoff**; both sides then use the **private relay only** for that relationship.
-5. If handoff fails, ETHOS stays on the bootstrap session and shows a clear status — use **Retry private relay handoff** in Settings (manual retry; no silent forever-hybrid after a successful handoff).
+3. **Owner:** In **Settings**, enable **private relay**, paste **Relay URL** and **Auth token**, then **Save Changes**. ETHOS probes the private relay first; on success the owner pool becomes **public defaults + private** (dual-homed). Credentials are advertised to peers only after that successful apply.
+4. **Connect:** Peers bootstrap on **public Nostr** first (signaling only). After the secure session is up, the owner’s relay URL and token are sent over **E2EE handoff**; the **peer** then switches to the **private relay only**. (Owner remains dual-homed in v1 so further peers can still find them on public bootstrap.)
+5. If handoff fails, ETHOS stays on the bootstrap session and shows a clear status — use **Retry private relay handoff** in Settings (manual retry; no silent forever-hybrid after a successful handoff). Disabling private relay restores the public default relay list.
 
 Rotate tokens, observability notes, and non-Cloudflare hosting are documented under **Rotate secrets** and **Portable API** in [`relay/README.md`](relay/README.md).
 

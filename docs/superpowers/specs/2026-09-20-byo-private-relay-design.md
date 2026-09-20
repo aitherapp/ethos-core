@@ -84,11 +84,12 @@ flowchart LR
 | State | Active Nostr relays |
 |-------|---------------------|
 | No BYO configured | `DEFAULT_NOSTR_RELAYS` (unchanged) |
-| Owner opt-in with valid `wss` + token | Owner’s pool = private URL only |
-| Peer after successful handoff | Private URL only for that relationship / session |
+| Owner opt-in with valid `wss` + token (after successful probe) | Dual-homed: `DEFAULT_NOSTR_RELAYS` + authed private URL (v1; keeps public bootstrap reachable) |
+| Peer after successful handoff | Private URL only for that session (process-wide pool in v1) |
 | Peer handoff connect failed | Remain on bootstrap (public) transport; show failure; wait for manual retry |
 | Widget with `data-relay-*` | Private URL only |
 | Widget without `data-relay-*` | Existing behavior (public defaults / as today) |
+| Owner disables private relay | Restore `DEFAULT_NOSTR_RELAYS`; clear custom/token URL from active pool |
 
 After a **successful** private switch, do not automatically fall back to public Nostr if the private relay later drops. Normal WebSocket reconnect to the **already selected private URL** is allowed. Returning to public Nostr requires explicit user action (e.g. disable private relay / reset relays).
 

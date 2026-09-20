@@ -24,7 +24,9 @@ import type { PushContentMode, PushTriggerMode } from './pushSettings';
 import {
   buildPrivateRelayHandshakeFields,
   parsePrivateRelayHandoff,
+  relayUpdateMode,
   type PrivateRelayHandoffFields,
+  type SetRelaysOpts,
 } from './privateRelayHandoff';
 import {
   loadPrivateRelaySettings,
@@ -728,35 +730,50 @@ export class IrohManager {
     handoff: PrivateRelayHandoffFields
   ): Promise<boolean> {
     return attemptPrivateRelayFromHandoff(handoff, {
-      setRelays: (relays) => this.setRelays(relays),
+      setRelays: (relays, opts) => this.setRelays(relays, opts),
       notifyStatus: (type, message) => this.notifyStatus(type, message),
       probeConnect: (url) => this.probePrivateRelayConnect(url),
     });
   }
 
   /**
-   * Owner Settings apply: one connect attempt then private-only pool, or warn and keep prior relays.
+   * Owner Settings apply: probe then dual-homed pool (defaults + private).
+   * Marks `ready` only on success so handshake fields are not advertised early.
    */
   async applyPrivateRelayFromSettings(): Promise<boolean> {
     const settings = loadPrivateRelaySettings();
-    const fields = buildPrivateRelayHandshakeFields(settings);
-    if (fields.relayUrl && fields.relayAuthToken) {
+    if (settings.relayUrl && settings.authToken) {
       this.privateRelayAttempted.delete(
         this.privateRelayAttemptKey({
-          relayUrl: fields.relayUrl,
-          relayAuthToken: fields.relayAuthToken,
+          relayUrl: settings.relayUrl,
+          relayAuthToken: settings.authToken,
         })
       );
     }
     const ok = await attemptPrivateRelayFromSettings(settings, {
-      setRelays: (relays) => this.setRelays(relays),
+      setRelays: (relays, opts) => this.setRelays(relays, opts),
       notifyStatus: (type, message) => this.notifyStatus(type, message),
       probeConnect: (url) => this.probePrivateRelayConnect(url),
+      defaultRelays: DEFAULT_NOSTR_RELAYS,
     });
     if (ok) {
+      savePrivateRelaySettings({ ...settings, enabled: true, ready: true });
       this.rebroadcastPushProfile();
+    } else {
+      savePrivateRelaySettings({ ...settings, enabled: false, ready: false });
     }
     return ok;
+  }
+
+  /** Disable private relay and restore public default pool (no token URL left active). */
+  clearPrivateRelayPool(opts?: SetRelaysOpts) {
+    const settings = loadPrivateRelaySettings();
+    savePrivateRelaySettings({
+      ...settings,
+      enabled: false,
+      ready: false,
+    });
+    this.restoreDefaultRelays(opts ?? { soft: true });
   }
 
   /**
@@ -2776,27 +2793,62 @@ export class IrohManager {
     this.currentPeerId = id;
   }
 
-  setRelays(relays: string[]) {
+  private ensureNostrRelaysConnected() {
+    NOSTR_RELAYS.forEach((url) => {
+      try {
+        (this.nostrPool as any).ensureRelay(url).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    });
+    if (this.currentPeerId) {
+      this.listenOnNostr(this.currentPeerId);
+      this.listenOnRelayData(this.currentPeerId);
+    }
+  }
+
+  /**
+   * Update the active Nostr pool.
+   * `soft: true` — ensureRelay + re-listen without wiping secrets/handshake (handoff switch).
+   * Default — full reconnect (Reset / explicit user relay list edits).
+   */
+  setRelays(relays: string[], opts?: SetRelaysOpts) {
     if (!Array.isArray(relays) || relays.length === 0) return;
     NOSTR_RELAYS = relays;
     localStorage.setItem('nexus_custom_relays', JSON.stringify(relays));
-    if (!this.currentPeerId) return;
+    const mode = relayUpdateMode(!!this.currentPeerId, opts);
+    if (mode === 'noop') return;
+    if (mode === 'soft') {
+      this.ensureNostrRelaysConnected();
+      return;
+    }
     this.notifyStatus('info', 'Relay list updated. Re-initializing...');
     this.reconnect();
   }
 
-  updateRelays(relays: string[]) {
-    this.setRelays(relays);
+  updateRelays(relays: string[], opts?: SetRelaysOpts) {
+    this.setRelays(relays, opts);
+  }
+
+  /** Restore DEFAULT_NOSTR_RELAYS and clear nexus_custom_relays / token URLs. */
+  restoreDefaultRelays(opts?: SetRelaysOpts) {
+    NOSTR_RELAYS = [...DEFAULT_NOSTR_RELAYS];
+    localStorage.removeItem('nexus_custom_relays');
+    const mode = relayUpdateMode(!!this.currentPeerId, opts);
+    if (mode === 'noop') return;
+    if (mode === 'soft') {
+      this.ensureNostrRelaysConnected();
+      return;
+    }
+    this.notifyStatus('info', 'Relays reset to default.');
+    this.reconnect();
   }
 
   resetRelays() {
     savePrivateRelaySettings(clearedPrivateRelaySettings());
     this.peerPrivateRelayHandoffs.clear();
     this.privateRelayAttempted.clear();
-    NOSTR_RELAYS = [...DEFAULT_NOSTR_RELAYS];
-    localStorage.removeItem('nexus_custom_relays');
-    this.notifyStatus('info', 'Relays reset to default.');
-    this.reconnect();
+    this.restoreDefaultRelays();
   }
 
   getUserIceServers() {

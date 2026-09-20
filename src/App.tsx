@@ -1574,18 +1574,32 @@ export default function App() {
   };
 
   const persistPrivateRelaySettings = async (next: PrivateRelaySettings): Promise<boolean> => {
-    savePrivateRelaySettings(next);
-    setPrivateRelaySettings(next);
     const action = privateRelaySaveAction(next);
+
+    // Disable: clear ready/advertise and restore public defaults (no private token URL stuck).
+    if (!next.enabled) {
+      const disabled = { ...next, enabled: false, ready: false };
+      savePrivateRelaySettings(disabled);
+      setPrivateRelaySettings(disabled);
+      iroh.clearPrivateRelayPool({ soft: true });
+      setRelays(iroh.getRelays());
+      return true;
+    }
+
     if (action.error) {
+      const failed = { ...next, enabled: false, ready: false };
+      savePrivateRelaySettings(failed);
+      setPrivateRelaySettings(failed);
       setStatus({ type: 'warning', message: action.error });
       clearStatusSoon();
       return false;
     }
-    if (!action.shouldApply) {
-      return true;
-    }
+
+    // Probe/apply before marking ready so helo never advertises unproven credentials.
+    savePrivateRelaySettings({ ...next, enabled: true, ready: false });
+    setPrivateRelaySettings({ ...next, enabled: true, ready: false });
     const ok = await iroh.applyPrivateRelayFromSettings();
+    setPrivateRelaySettings(loadPrivateRelaySettings());
     setRelays(iroh.getRelays());
     if (!ok) {
       setStatus({ type: 'warning', message: 'Private relay unavailable' });
@@ -3203,6 +3217,7 @@ export default function App() {
                         setPrivateRelaySettings(current => ({
                           ...current,
                           enabled: !current.enabled,
+                          ready: false,
                         }))
                       }
                       className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${privateRelaySettings.enabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
@@ -3222,6 +3237,7 @@ export default function App() {
                           setPrivateRelaySettings(current => ({
                             ...current,
                             relayUrl: e.target.value,
+                            ready: false,
                           }))
                         }
                         className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
@@ -3239,6 +3255,7 @@ export default function App() {
                           setPrivateRelaySettings(current => ({
                             ...current,
                             authToken: e.target.value,
+                            ready: false,
                           }))
                         }
                         className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"

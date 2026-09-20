@@ -1,5 +1,7 @@
 export interface PrivateRelaySettings {
   enabled: boolean;
+  /** True only after a successful probe/apply; gates handshake advertisement. */
+  ready: boolean;
   relayUrl: string;
   authToken: string;
 }
@@ -8,6 +10,7 @@ const STORAGE_KEY = 'ethos_private_relay_settings';
 
 const DEFAULT_SETTINGS: PrivateRelaySettings = {
   enabled: false,
+  ready: false,
   relayUrl: '',
   authToken: '',
 };
@@ -22,7 +25,12 @@ export function loadPrivateRelaySettings(): PrivateRelaySettings {
   }
   try {
     const parsed = JSON.parse(raw) as Partial<PrivateRelaySettings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      // Legacy saves without `ready`: treat enabled+valid as not ready until re-apply.
+      ready: parsed.ready === true,
+    };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
