@@ -7,6 +7,10 @@ import {
   buildPrivateRelayHandshakeFields,
   dedupeRelays,
   relayUpdateMode,
+  nostrSubscriptionKey,
+  parseNostrSubscriptionKey,
+  relaysRemovedFromList,
+  subscriptionKeysToClearForRebind,
 } from '../src/lib/privateRelayHandoff';
 
 describe('privateRelayHandoff', () => {
@@ -114,6 +118,62 @@ describe('privateRelayHandoff', () => {
     expect(relayUpdateMode(true)).toBe('reconnect');
     expect(relayUpdateMode(true, { soft: true })).toBe('soft');
     expect(relayUpdateMode(false, { soft: true })).toBe('noop');
+  });
+
+  it('parses subscription keys with colon-bearing topic ids', () => {
+    const peerId = 'abc123';
+    const dataKey = nostrSubscriptionKey(41003, `${peerId}:data`);
+    expect(dataKey).toBe('41003:abc123:data');
+    expect(parseNostrSubscriptionKey(dataKey)).toEqual({
+      kind: 41003,
+      topicId: 'abc123:data',
+    });
+    expect(parseNostrSubscriptionKey('not-a-key')).toBeNull();
+  });
+
+  it('lists relays removed when shrinking to private-only', () => {
+    expect(
+      relaysRemovedFromList(
+        ['wss://nos.lol', 'wss://relay.primal.net', 'wss://private/?token=t'],
+        ['wss://private/?token=t']
+      )
+    ).toEqual(['wss://nos.lol', 'wss://relay.primal.net']);
+    expect(relaysRemovedFromList(['wss://a'], ['wss://a', 'wss://b'])).toEqual([]);
+  });
+
+  it('subscriptionKeysToClearForRebind keeps peer topics and active peer ticket subs', () => {
+    const peerId = 'ownerpeer';
+    const ticket = 'remotepeer';
+    const keys = subscriptionKeysToClearForRebind({
+      activeKeys: [
+        nostrSubscriptionKey(41002, peerId),
+        nostrSubscriptionKey(41003, `${peerId}:data`),
+        nostrSubscriptionKey(41002, ticket),
+      ],
+      peerId,
+      signalKind: 41002,
+      relayDataKind: 41003,
+      buildDataTopic: (id) => `${id}:data`,
+    });
+    expect(keys.sort()).toEqual(
+      [
+        '41002:ownerpeer',
+        '41003:ownerpeer:data',
+        '41002:remotepeer',
+      ].sort()
+    );
+  });
+
+  it('subscriptionKeysToClearForRebind seeds own topics when active set is empty', () => {
+    expect(
+      subscriptionKeysToClearForRebind({
+        activeKeys: [],
+        peerId: 'me',
+        signalKind: 41002,
+        relayDataKind: 41003,
+        buildDataTopic: (id) => `${id}:data`,
+      }).sort()
+    ).toEqual(['41002:me', '41003:me:data'].sort());
   });
 
   it('never auto-retries', () => {

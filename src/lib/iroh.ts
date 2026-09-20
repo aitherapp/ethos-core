@@ -23,8 +23,11 @@ import { notifyPeerViaGateway } from './peerPush';
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
 import {
   buildPrivateRelayHandshakeFields,
+  parseNostrSubscriptionKey,
   parsePrivateRelayHandoff,
+  relaysRemovedFromList,
   relayUpdateMode,
+  subscriptionKeysToClearForRebind,
   type PrivateRelayHandoffFields,
   type SetRelaysOpts,
 } from './privateRelayHandoff';
@@ -2793,7 +2796,42 @@ export class IrohManager {
     this.currentPeerId = id;
   }
 
-  private ensureNostrRelaysConnected() {
+  /**
+   * Soft relay-list change: close old topic subs, drop activeSubscriptions/nostrSubs,
+   * close sockets for removed relay URLs, then re-subscribe against the new NOSTR_RELAYS.
+   * Does not touch secrets, handshake, ratchet, relaySessions, or WebRTC connections.
+   */
+  private rebindNostrSubscriptions(previousRelays: readonly string[]) {
+    const keysToRebind = subscriptionKeysToClearForRebind({
+      activeKeys: this.activeSubscriptions,
+      peerId: this.currentPeerId,
+      signalKind: SIGNAL_KIND,
+      relayDataKind: RELAY_DATA_KIND,
+      buildDataTopic: buildRelayDataTopic,
+    });
+
+    for (const key of keysToRebind) {
+      const sub = this.nostrSubs.get(key);
+      if (sub) {
+        try {
+          sub.close?.();
+        } catch {
+          /* ignore */
+        }
+        this.nostrSubs.delete(key);
+      }
+      this.activeSubscriptions.delete(key);
+    }
+
+    const removed = relaysRemovedFromList(previousRelays, NOSTR_RELAYS);
+    if (removed.length > 0) {
+      try {
+        this.nostrPool.close(removed);
+      } catch {
+        /* ignore */
+      }
+    }
+
     NOSTR_RELAYS.forEach((url) => {
       try {
         (this.nostrPool as any).ensureRelay(url).catch(() => {});
@@ -2801,25 +2839,28 @@ export class IrohManager {
         /* ignore */
       }
     });
-    if (this.currentPeerId) {
-      this.listenOnNostr(this.currentPeerId);
-      this.listenOnRelayData(this.currentPeerId);
+
+    for (const key of keysToRebind) {
+      const parsed = parseNostrSubscriptionKey(key);
+      if (!parsed) continue;
+      this.listenOnNostr(parsed.topicId, parsed.kind);
     }
   }
 
   /**
    * Update the active Nostr pool.
-   * `soft: true` — ensureRelay + re-listen without wiping secrets/handshake (handoff switch).
+   * `soft: true` — rebind subscriptions to the new relay list without wiping secrets/handshake.
    * Default — full reconnect (Reset / explicit user relay list edits).
    */
   setRelays(relays: string[], opts?: SetRelaysOpts) {
     if (!Array.isArray(relays) || relays.length === 0) return;
+    const previousRelays = [...NOSTR_RELAYS];
     NOSTR_RELAYS = relays;
     localStorage.setItem('nexus_custom_relays', JSON.stringify(relays));
     const mode = relayUpdateMode(!!this.currentPeerId, opts);
     if (mode === 'noop') return;
     if (mode === 'soft') {
-      this.ensureNostrRelaysConnected();
+      this.rebindNostrSubscriptions(previousRelays);
       return;
     }
     this.notifyStatus('info', 'Relay list updated. Re-initializing...');
@@ -2832,12 +2873,13 @@ export class IrohManager {
 
   /** Restore DEFAULT_NOSTR_RELAYS and clear nexus_custom_relays / token URLs. */
   restoreDefaultRelays(opts?: SetRelaysOpts) {
+    const previousRelays = [...NOSTR_RELAYS];
     NOSTR_RELAYS = [...DEFAULT_NOSTR_RELAYS];
     localStorage.removeItem('nexus_custom_relays');
     const mode = relayUpdateMode(!!this.currentPeerId, opts);
     if (mode === 'noop') return;
     if (mode === 'soft') {
-      this.ensureNostrRelaysConnected();
+      this.rebindNostrSubscriptions(previousRelays);
       return;
     }
     this.notifyStatus('info', 'Relays reset to default.');

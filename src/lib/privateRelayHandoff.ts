@@ -40,6 +40,59 @@ export function relayUpdateMode(
   return 'reconnect';
 }
 
+/** Subscription bookkeeping key used by listenOnNostr (`${kind}:${topicId}`). */
+export function nostrSubscriptionKey(kind: number, topicId: string): string {
+  return `${kind}:${topicId}`;
+}
+
+/**
+ * Parse a subscription key back into kind + topic.
+ * Topic ids may contain colons (e.g. `${peerId}:data`), so only the first `:` splits.
+ */
+export function parseNostrSubscriptionKey(
+  key: string
+): { kind: number; topicId: string } | null {
+  const idx = key.indexOf(':');
+  if (idx <= 0) return null;
+  const kind = Number(key.slice(0, idx));
+  const topicId = key.slice(idx + 1);
+  if (!Number.isFinite(kind) || !topicId) return null;
+  return { kind, topicId };
+}
+
+/** Relays present in `previous` but absent from `next` (stale sockets to close). */
+export function relaysRemovedFromList(
+  previous: readonly string[],
+  next: readonly string[]
+): string[] {
+  const nextSet = new Set(next);
+  return previous.filter((url) => !nextSet.has(url));
+}
+
+/**
+ * Keys to clear + re-subscribe after a soft relay list change.
+ * Preserves every currently active topic and always includes own peer signal + data topics.
+ */
+export function subscriptionKeysToClearForRebind(opts: {
+  activeKeys: Iterable<string>;
+  peerId: string | null;
+  signalKind: number;
+  relayDataKind: number;
+  buildDataTopic: (peerId: string) => string;
+}): string[] {
+  const keys = new Set<string>();
+  for (const key of opts.activeKeys) {
+    if (key) keys.add(key);
+  }
+  if (opts.peerId) {
+    keys.add(nostrSubscriptionKey(opts.signalKind, opts.peerId));
+    keys.add(
+      nostrSubscriptionKey(opts.relayDataKind, opts.buildDataTopic(opts.peerId))
+    );
+  }
+  return [...keys];
+}
+
 export function parsePrivateRelayHandoff(
   signal: Record<string, unknown>
 ): PrivateRelayHandoffFields | null {
