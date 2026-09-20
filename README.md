@@ -30,7 +30,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.6" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.7" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -355,6 +355,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.7 – Settings Docs Links (2026-09-20)
+- Settings help for push gateway and private relay links to the GitHub `push-gateway/` and `relay/` folders.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
 ### v3.2.6 – Opt-in BYO Private Relay (2026-09-20)
 - Added an opt-in BYO private Nostr relay reference Worker (`relay/`) with one-click Cloudflare deploy, auth token, and kind allowlist.
 - Peers discover via Pkarr DHT, bootstrap on public Nostr, then receive relay credentials over E2EE handoff; widget supports `data-relay-url` / `data-relay-token`.

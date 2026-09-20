@@ -110,6 +110,15 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.7',
+    title: 'Settings Docs Links',
+    date: '2026-09-20',
+    changes: [
+      'Settings help links for push gateway and private relay now open the GitHub source folders instead of broken Pages paths.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
     version: '3.2.6',
     title: 'Opt-in BYO Private Relay',
     date: '2026-09-20',
@@ -3106,8 +3115,13 @@ export default function App() {
 
                   <p className="text-[9px] opacity-40 leading-relaxed">
                     After one-click Cloudflare deploy, open your Worker URL to copy the auth token (shown once). See{' '}
-                    <a href="./push-gateway/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
-                      push-gateway/README.md
+                    <a
+                      href="https://github.com/aitherapp/ethos-core/tree/main/push-gateway"
+                      className="text-brand hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      push-gateway on GitHub
                     </a>
                     . Any HTTPS host that implements the same API works.
                   </p>
@@ -3276,8 +3290,13 @@ export default function App() {
 
                     <p className="text-[9px] opacity-40 leading-relaxed">
                       After Cloudflare deploy, open your Worker URL to copy the Relay URL and auth token. See{' '}
-                      <a href="./relay/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
-                        relay/README.md
+                      <a
+                        href="https://github.com/aitherapp/ethos-core/tree/main/relay"
+                        className="text-brand hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        relay on GitHub
                       </a>
                       .
                     </p>
