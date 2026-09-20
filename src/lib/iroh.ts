@@ -2780,6 +2780,7 @@ export class IrohManager {
     if (!Array.isArray(relays) || relays.length === 0) return;
     NOSTR_RELAYS = relays;
     localStorage.setItem('nexus_custom_relays', JSON.stringify(relays));
+    if (!this.currentPeerId) return;
     this.notifyStatus('info', 'Relay list updated. Re-initializing...');
     this.reconnect();
   }

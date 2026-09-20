@@ -68,10 +68,6 @@ function resolveOwnerPushProfile(
 
     const ui = createWidgetDOM(config);
 
-    // Initialize iroh for visitor node
-    await iroh.initialize(visitorId);
-    
-    // Connect to site owner's ETHOS ticket
     const ownerTicket = config.ownerTicket;
     const ownerPeerId = ownerTicket.replace('ethos://node/', '').slice(0, 8);
     const relayUrl = config.relayUrl;
@@ -84,6 +80,10 @@ function resolveOwnerPushProfile(
     ) {
       iroh.setRelays([buildAuthedRelayUrl(relayUrl, relayToken)]);
     }
+
+    // Initialize iroh for visitor node (after private relay list is set)
+    await iroh.initialize(visitorId);
+
     await iroh.connectByTicket(ownerTicket);
 
     const refreshOwnerStatus = () => {
