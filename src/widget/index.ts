@@ -4,6 +4,7 @@ import { createWidgetDOM } from './widgetUI';
 import { notifyPeerViaGateway, type NotifyPushProfile } from '../lib/peerPush';
 import { SecureMessage } from '../types';
 import type { PushContentMode, PushTriggerMode } from '../lib/pushSettings';
+import { mapTransportModeToWidgetStatus } from './connectionStatus';
 
 function resolveOwnerPushProfile(
   script: HTMLScriptElement,
@@ -70,6 +71,18 @@ function resolveOwnerPushProfile(
     const ownerTicket = config.ownerTicket;
     const ownerPeerId = ownerTicket.replace('ethos://node/', '').slice(0, 8);
     await iroh.connectByTicket(ownerTicket);
+
+    const refreshOwnerStatus = () => {
+      const transport =
+        iroh.getPeerTransportStatus(ownerTicket) ||
+        iroh.getPeerTransportStatus(ownerPeerId);
+      const mode = transport?.mode ?? 'connecting';
+      ui.setConnectionStatus(mapTransportModeToWidgetStatus(mode));
+    };
+
+    refreshOwnerStatus();
+    const statusTimer = window.setInterval(refreshOwnerStatus, 1000);
+    window.addEventListener('pagehide', () => window.clearInterval(statusTimer), { once: true });
 
     let isInitialMessage = true;
 
