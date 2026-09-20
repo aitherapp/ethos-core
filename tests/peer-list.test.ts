@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findPeerIdByDisplayQuery,
   forgetRemovedPeer,
   mergeDiscoveredPeers,
   rememberRemovedPeer,
@@ -27,5 +28,26 @@ describe('peer list helpers', () => {
     const removed = rememberRemovedPeer(['old'], 'nisse');
     expect(removed).toEqual(['old', 'nisse']);
     expect(forgetRemovedPeer(removed, 'nisse')).toEqual(['old']);
+  });
+
+  it('resolves visitor short tags like #aa8f back to a known peer id', () => {
+    const entries = [
+      { peerId: 'peer-nisse', displayName: 'nisse' },
+      { peerId: 'peer-visitor-aa8f', displayName: 'Visitor #aa8f (/pricing)' },
+      { peerId: 'peer-visitor-bd0f', displayName: 'Visitor #bd0f (/)' },
+    ];
+    expect(findPeerIdByDisplayQuery('#aa8f', entries)).toBe('peer-visitor-aa8f');
+    expect(findPeerIdByDisplayQuery('aa8f', entries)).toBe('peer-visitor-aa8f');
+    expect(findPeerIdByDisplayQuery('Visitor #aa8f', entries)).toBe('peer-visitor-aa8f');
+  });
+
+  it('returns null when a visitor short tag is ambiguous or unknown', () => {
+    expect(findPeerIdByDisplayQuery('#aa8f', [
+      { peerId: 'a', displayName: 'Visitor #aa8f (/a)' },
+      { peerId: 'b', displayName: 'Visitor #aa8f (/b)' },
+    ])).toBeNull();
+    expect(findPeerIdByDisplayQuery('#ffff', [
+      { peerId: 'a', displayName: 'Visitor #aa8f (/a)' },
+    ])).toBeNull();
   });
 });

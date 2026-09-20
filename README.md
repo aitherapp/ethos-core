@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.3" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.4" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.4 – Restore Removed Visitors (2026-09-20)
+- Re-add deleted visitors via `#aa8f` / `Visitor #aa8f` using local contact labels (not DHT name search).
+- Labels survive removal; a new message from a removed visitor restores the contact automatically.
+- Refreshed app and service-worker cache versions.
+
 ### v3.2.3 – Contact List Hygiene (2026-09-20)
 - Connecting to a peer no longer picks up their website widget visitors as your contacts.
 - Deleted contacts stay deleted (removal blocklist + disconnect) instead of reappearing from mesh discovery.

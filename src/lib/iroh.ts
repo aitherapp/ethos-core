@@ -2423,8 +2423,18 @@ export class IrohManager {
   onMessage(callback: (msg: SecureMessage) => void) { this.onMessageCallback = callback; }
   getIdentity() { return this.identity; }
 
-  /** Drop local connection state so a removed contact cannot reappear via visibility polling. */
+  /** Drop local connection state so a removed contact cannot reappear via visibility polling.
+   *  Keep display names so the user can re-add visitors by Visitor #xxxx / #xxxx. */
   forgetPeer(peerId: string) {
+    const existingName = this.peerMetadata.get(peerId)?.displayName;
+    if (existingName) {
+      try {
+        const raw = localStorage.getItem('nexus_peer_labels');
+        const labels = raw ? JSON.parse(raw) as Record<string, string> : {};
+        labels[peerId] = existingName;
+        localStorage.setItem('nexus_peer_labels', JSON.stringify(labels));
+      } catch {}
+    }
     const conn = this.connections.get(peerId);
     if (conn) {
       try { conn.destroy(); } catch {}
@@ -2434,7 +2444,6 @@ export class IrohManager {
     this.secrets.delete(peerId);
     this.ratchetStates.delete(peerId);
     this.handshakeStatus.delete(peerId);
-    this.peerMetadata.delete(peerId);
     this.peerPks.delete(peerId);
     this.connectionStatus.delete(peerId);
     this.connectionAttemptStartedAt.delete(peerId);
@@ -2451,8 +2460,30 @@ export class IrohManager {
       window.clearTimeout(noResponseTimer);
       this.noResponseTimers.delete(peerId);
     }
-    this.persistMetadata();
   }
+
+  listPeerDisplayEntries(): Array<{ peerId: string; displayName: string }> {
+    const fromMemory = Array.from(this.peerMetadata.entries())
+      .filter(([, meta]) => !!meta?.displayName)
+      .map(([peerId, meta]) => ({ peerId, displayName: meta.displayName }));
+
+    let fromStorage: Array<{ peerId: string; displayName: string }> = [];
+    try {
+      const raw = localStorage.getItem('nexus_peer_labels');
+      if (raw) {
+        fromStorage = Object.entries(JSON.parse(raw) as Record<string, string>)
+          .filter(([, displayName]) => !!displayName)
+          .map(([peerId, displayName]) => ({ peerId, displayName }));
+      }
+    } catch {}
+
+    const byId = new Map<string, string>();
+    for (const entry of [...fromStorage, ...fromMemory]) {
+      byId.set(entry.peerId, entry.displayName);
+    }
+    return Array.from(byId.entries()).map(([peerId, displayName]) => ({ peerId, displayName }));
+  }
+
   getQuantumIdentity() { return this.qIdentity; }
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
@@ -2463,6 +2494,12 @@ export class IrohManager {
   setPeerDisplayName(peerId: string, displayName: string) {
     this.peerMetadata.set(peerId, { displayName });
     this.persistMetadata().catch(() => {});
+    try {
+      const raw = localStorage.getItem('nexus_peer_labels');
+      const labels = raw ? JSON.parse(raw) as Record<string, string> : {};
+      labels[peerId] = displayName;
+      localStorage.setItem('nexus_peer_labels', JSON.stringify(labels));
+    } catch {}
   }
   getGroups() { return Array.from(this.groups.values()); }
   isGroupOwner(groupId: string) { return this.groups.get(groupId)?.ownerId === this.identity?.id; }

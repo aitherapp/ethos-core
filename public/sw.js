@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ethos-v3.2.3'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.2.4'; // Increment for cache busting
 const DEEP_LINK_STASH_CACHE = 'ethos-deeplink-v1';
 const DEEP_LINK_STASH_URL = './__ethos_pending_deeplink';
 const ASSETS = [

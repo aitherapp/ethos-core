@@ -30,7 +30,7 @@ import { exportIdentity } from './lib/crypto';
 import { diagnosticsLog, installDiagnosticsConsoleCapture, DiagnosticEntry } from './lib/diagnostics';
 import { IndexedDbMessageHistoryStore, loadEncryptedMessageHistory, saveEncryptedMessageHistory } from './lib/messageHistory';
 import { getMobileNavItems, MobileNavItemId } from './lib/mobileNav';
-import { forgetRemovedPeer, mergeDiscoveredPeers, rememberRemovedPeer, removePeerFromList } from './lib/peerList';
+import { findPeerIdByDisplayQuery, forgetRemovedPeer, mergeDiscoveredPeers, rememberRemovedPeer, removePeerFromList } from './lib/peerList';
 import { isNearScrollBottom } from './lib/chatScroll';
 import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donations';
 import { validateHistoryPassphrase } from './lib/historyLock';
@@ -103,6 +103,16 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.2.4',
+    title: 'Restore Removed Visitors',
+    date: '2026-09-20',
+    changes: [
+      'Re-add deleted visitors by typing #aa8f / Visitor #aa8f (local label lookup, not DHT).',
+      'Contact labels are kept after removal; a new message from a removed visitor restores the contact.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.2.3',
     title: 'Contact List Hygiene',
@@ -1091,8 +1101,16 @@ export default function App() {
       
       setPeers(prev => prev.includes(msg.senderId) ? prev : [...prev, msg.senderId]);
       if (msg.senderId !== identity?.id) playReceiveSound();
+      // Inbound chat restores a previously removed contact (explicit user intent via messaging).
+      if (removedPeersRef.current.includes(msg.senderId)) {
+        setRemovedPeers(prev => {
+          const next = forgetRemovedPeer(prev, msg.senderId);
+          localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+          return next;
+        });
+      }
       setKnownPeers(prev => {
-        if (removedPeersRef.current.includes(msg.senderId) || prev.includes(msg.senderId)) return prev;
+        if (prev.includes(msg.senderId)) return prev;
         const next = [...prev, msg.senderId];
         localStorage.setItem('nexus_peer_list', JSON.stringify(next));
         return next;
@@ -1347,20 +1365,25 @@ export default function App() {
       let targetId = input;
       // Nexus Tickets (peer IDs) were 16 chars (v2.6) and are now 64 chars (v2.7+)
       const isTicket = isDirectPeerTicket(input);
-      
+
       if (!isTicket) {
-        setStatus({ type: 'info', message: `DHT Lookup: ${input}` });
-        const resolved = await iroh.searchByName(input);
-        if (resolved) {
-          setUnverifiedDiscovery({ name: input, peerId: resolved });
-          setStatus({ type: 'warning', message: 'Name discovery is unverified. Confirm the peer ticket before connecting.' });
-          setIsConnecting(false);
-          setShowAddPeer(false);
-          return;
+        const localMatch = findPeerIdByDisplayQuery(input, iroh.listPeerDisplayEntries());
+        if (localMatch) {
+          targetId = localMatch;
         } else {
-          setStatus({ type: 'error', message: `Could not find node for: ${input}` });
-          setIsConnecting(false);
-          return;
+          setStatus({ type: 'info', message: `DHT Lookup: ${input}` });
+          const resolved = await iroh.searchByName(input);
+          if (resolved) {
+            setUnverifiedDiscovery({ name: input, peerId: resolved });
+            setStatus({ type: 'warning', message: 'Name discovery is unverified. Confirm the peer ticket before connecting.' });
+            setIsConnecting(false);
+            setShowAddPeer(false);
+            return;
+          } else {
+            setStatus({ type: 'error', message: `Could not find node for: ${input}` });
+            setIsConnecting(false);
+            return;
+          }
         }
       }
 
