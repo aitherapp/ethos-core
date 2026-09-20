@@ -461,7 +461,6 @@ Staging builds intentionally use `npm run build` and do not create release recei
 ### v3.1.88 – Secure VAPID Entropy & Private Peer Push (2026-09-19)
 - Replaced insecure `Math.random` VAPID fallback with `crypto.getRandomValues` (Code Scanning insecure-randomness).
 - Peer chat push notifies only when offline; body stays generic (`[chat] New message`) so E2E plaintext never reaches the OS notification.
-- Design/plan: `docs/superpowers/specs/2026-09-19-vapid-randomness-peer-push-design.md`, `docs/superpowers/plans/2026-09-19-vapid-randomness-peer-push.md`.
 - Refreshed app and service-worker cache versions.
 
 ### v3.1.87 – Web Push APNs Endpoint Exchange (2026-09-18)
