@@ -160,6 +160,12 @@ function resolveOwnerPushProfile(
           iroh.connectByTicket(ownerTicket).catch(() => {});
           return ok;
         },
+        prepareForRetry: () => {
+          // Zombie "relay" must not stay usable — wait for a live post-wake session.
+          iroh.invalidatePeerSession(ownerTicket);
+          iroh.invalidatePeerSession(ownerPeerId);
+          iroh.connectByTicket(ownerTicket).catch(() => {});
+        },
         send: sendOnce,
       });
 

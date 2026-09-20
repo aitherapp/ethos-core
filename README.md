@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.4" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.5" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.5 – Wake Before Relay Ciphertext (2026-09-20)
+- Widget always wakes the owner and clears zombie relay sessions before sending ciphertext, so push notifications are paired with chat messages again.
+- Relay is only treated as usable when the peer has been recently active; the same wake-wait path applies to ethos→ethos when push is configured.
+- Bumped app, service-worker, and `widget.js?v=` cache keys.
+
 ### v3.2.4 – Restore Removed Visitors (2026-09-20)
 - Re-add deleted visitors via `#aa8f` / `Visitor #aa8f` using local contact labels (not DHT name search).
 - Labels survive removal; a new message from a removed visitor restores the contact automatically.

@@ -32,6 +32,8 @@ import {
   shouldAcceptRelayData,
   canSendFileOverTransport,
   getProductTransportStatus,
+  isPeerActivityFresh,
+  PEER_RELAY_LIVE_MS,
 } from '../src/lib/iroh';
 
 describe('signaling helpers', () => {
@@ -465,7 +467,15 @@ describe('signaling helpers', () => {
       directConnected: false,
       relayConnected: true,
       handshakeComplete: true,
+      peerLive: true,
     })).toEqual({ mode: 'relay', label: 'Secure relay mode', usable: true });
+
+    expect(getProductTransportStatus({
+      directConnected: false,
+      relayConnected: true,
+      handshakeComplete: true,
+      peerLive: false,
+    })).toEqual({ mode: 'connecting', label: 'Connecting securely', usable: false });
 
     expect(getProductTransportStatus({
       directConnected: false,
@@ -473,5 +483,11 @@ describe('signaling helpers', () => {
       handshakeComplete: false,
       failed: true,
     })).toEqual({ mode: 'unavailable', label: 'Peer unavailable', usable: false });
+  });
+
+  it('treats missing or stale peer activity as not live for relay sends', () => {
+    expect(isPeerActivityFresh(undefined, 100_000, PEER_RELAY_LIVE_MS)).toBe(false);
+    expect(isPeerActivityFresh(100_000 - PEER_RELAY_LIVE_MS - 1, 100_000, PEER_RELAY_LIVE_MS)).toBe(false);
+    expect(isPeerActivityFresh(100_000 - PEER_RELAY_LIVE_MS + 1, 100_000, PEER_RELAY_LIVE_MS)).toBe(true);
   });
 });

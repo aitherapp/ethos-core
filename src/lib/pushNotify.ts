@@ -49,9 +49,9 @@ export function parseChatDeepLink(hash: string): { peerId: string; messageId: st
   return { peerId: match[1], messageId: match[2] };
 }
 
-/** Synthetic id used when the widget wakes the owner before ciphertext exists. */
+/** Synthetic id used when waking a peer before ciphertext exists. */
 export function isWakePlaceholderMessageId(messageId: string): boolean {
-  return messageId.startsWith('widget-wake-');
+  return messageId.startsWith('widget-wake-') || messageId.startsWith('peer-wake-');
 }
 
 /** Resolve peer/message from SW notification payload or a deep-link URL/hash. */

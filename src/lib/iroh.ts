@@ -185,19 +185,34 @@ export function canSendFileOverTransport({
   return { ok: true };
 }
 
+/** Relay "connected" without recent inbound peer activity is treated as a zombie. */
+export const PEER_RELAY_LIVE_MS = 45_000;
+
+export function isPeerActivityFresh(
+  lastActivityAt: number | undefined,
+  now: number,
+  maxAgeMs: number = PEER_RELAY_LIVE_MS
+): boolean {
+  if (lastActivityAt === undefined) return false;
+  return now - lastActivityAt <= maxAgeMs;
+}
+
 export function getProductTransportStatus({
   directConnected,
   relayConnected,
   handshakeComplete,
   failed = false,
+  peerLive = true,
 }: {
   directConnected: boolean;
   relayConnected: boolean;
   handshakeComplete: boolean;
   failed?: boolean;
+  /** False when relay looks connected but the peer has been silent (likely asleep). */
+  peerLive?: boolean;
 }): { mode: RelayTransportMode; label: string; usable: boolean } {
   if (directConnected && handshakeComplete) return { mode: 'direct', label: 'Secure direct tunnel', usable: true };
-  if (relayConnected && handshakeComplete) return { mode: 'relay', label: 'Secure relay mode', usable: true };
+  if (relayConnected && handshakeComplete && peerLive) return { mode: 'relay', label: 'Secure relay mode', usable: true };
   if (failed) return { mode: 'unavailable', label: 'Peer unavailable', usable: false };
   return { mode: 'connecting', label: 'Connecting securely', usable: false };
 }
@@ -964,13 +979,45 @@ export class IrohManager {
     this.notifyStatus('error', message);
   }
 
+  private lastPeerActivityAt: Map<string, number> = new Map();
+
   private recordPeerResponse(peerId: string) {
+    this.lastPeerActivityAt.set(peerId, Date.now());
     this.connectionAttemptStartedAt.delete(peerId);
     const timeoutId = this.noResponseTimers.get(peerId);
     if (timeoutId !== undefined) {
       window.clearTimeout(timeoutId);
       this.noResponseTimers.delete(peerId);
     }
+  }
+
+  private isPeerLive(peerId: string, now = Date.now()) {
+    return isPeerActivityFresh(this.lastPeerActivityAt.get(peerId), now);
+  }
+
+  /**
+   * Drop local relay/session state that can look "connected" while the peer is
+   * asleep. Call before wake-then-retry so ciphertext uses a fresh handshake.
+   */
+  invalidatePeerSession(peerId: string) {
+    const existingConn = this.connections.get(peerId);
+    if (existingConn) {
+      try { existingConn.destroy(); } catch (e) {}
+      this.connections.delete(peerId);
+    }
+    this.pendingSignals.delete(peerId);
+    this.secrets.delete(peerId);
+    this.ratchetStates.delete(peerId);
+    this.handshakeStatus.delete(peerId);
+    this.relaySessions.delete(peerId);
+    this.establishedRelaySessions.delete(peerId);
+    this.relayStatus.delete(peerId);
+    this.relayConfirmed.delete(peerId);
+    this.relayHelloAcks.delete(peerId);
+    this.signalSessions.delete(peerId);
+    this.lastPeerActivityAt.delete(peerId);
+    this.connectionStatus.delete(peerId);
+    this.connectionAttemptStartedAt.delete(peerId);
   }
 
   private scheduleNoResponseWarning(peerId: string, startedAt: number) {
@@ -2250,41 +2297,89 @@ export class IrohManager {
   }
 
   async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean } = {}) {
-    const conn = this.connections.get(peerId);
-    const ratchetState = this.ratchetStates.get(peerId);
-    if (!ratchetState) {
+    const attempt = async (): Promise<{ id: string; senderId: string; receiverId: string; type: 'text'; content: string; iv: string; timestamp: number; expiresAt?: number } | null> => {
+      const conn = this.connections.get(peerId);
+      const ratchetState = this.ratchetStates.get(peerId);
+      const relayLive = this.relayStatus.get(peerId) === 'connected' && this.isPeerLive(peerId);
+      if (!ratchetState) {
+        this.ensureRelayHandshake(peerId);
+        return null;
+      }
+
+      // Stale local relay must not encrypt/send — keys belong to a zombie session.
+      if (!conn?.connected && this.relayStatus.get(peerId) === 'connected' && !relayLive) {
+        return null;
+      }
+
+      const { ciphertext, iv, state } = await ratchetEncrypt(ratchetState, text);
+      this.ratchetStates.set(peerId, state);
+
+      const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
+      let delivered = false;
+      if (conn?.connected) {
+        conn.send(JSON.stringify({ ...msg, encrypted: true }));
+        delivered = true;
+      } else if (relayLive) {
+        await this.sendRelayData(peerId, { ...msg, encrypted: true });
+        delivered = true;
+      } else {
+        this.ensureRelayHandshake(peerId);
+        return null;
+      }
+      if (delivered && !options.skipPush) {
+        const peerProfile = this.getPeerPushProfile(peerId);
+        notifyPeerViaGateway(peerProfile, {
+          senderName: this.identity?.displayName || 'ETHOS Peer',
+          previewText: text,
+          localPeerId: this.identity!.id,
+          messageId: msg.id,
+          directConnected: Boolean(conn?.connected),
+          relayConnected: this.relayStatus.get(peerId) === 'connected',
+        }).catch(() => {});
+      }
+      return { ...msg, content: text };
+    };
+
+    let sent = await attempt();
+    if (sent) return sent;
+
+    // Widget owns wake/retry via deliverWidgetOutbound (skipPush).
+    if (options.skipPush) {
+      if (this.relayStatus.get(peerId) === 'connected' && !this.isPeerLive(peerId)) {
+        this.invalidatePeerSession(peerId);
+      }
       this.ensureRelayHandshake(peerId);
       return null;
     }
-    
-    const { ciphertext, iv, state } = await ratchetEncrypt(ratchetState, text);
-    this.ratchetStates.set(peerId, state);
-    
-    const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
-    let delivered = false;
-    if (conn?.connected) {
-      conn.send(JSON.stringify({ ...msg, encrypted: true }));
-      delivered = true;
-    } else if (this.relayStatus.get(peerId) === 'connected') {
-      await this.sendRelayData(peerId, { ...msg, encrypted: true });
-      delivered = true;
-    } else {
-      this.ensureRelayHandshake(peerId);
-      return null;
+
+    const peerProfile = this.getPeerPushProfile(peerId);
+    if (this.relayStatus.get(peerId) === 'connected' && !this.isPeerLive(peerId)) {
+      this.invalidatePeerSession(peerId);
     }
-    // Push is wake-only; never notify before ciphertext is on a live transport.
-    if (delivered && !options.skipPush) {
-      const peerProfile = this.getPeerPushProfile(peerId);
+    this.ensureRelayHandshake(peerId);
+
+    if (peerProfile) {
       notifyPeerViaGateway(peerProfile, {
         senderName: this.identity?.displayName || 'ETHOS Peer',
         previewText: text,
         localPeerId: this.identity!.id,
-        messageId: msg.id,
-        directConnected: Boolean(conn?.connected),
-        relayConnected: this.relayStatus.get(peerId) === 'connected',
+        messageId: `peer-wake-${Date.now()}`,
+        directConnected: false,
+        relayConnected: false,
       }).catch(() => {});
+
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if (this.getPeerTransportStatus(peerId).usable) {
+          sent = await attempt();
+          if (sent) return sent;
+        }
+        this.ensureRelayHandshake(peerId);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
-    return { ...msg, content: text };
+
+    return null;
   }
 
   async sendFile(peerId: string, file: File) {
@@ -2615,11 +2710,13 @@ export class IrohManager {
   }
 
   getPeerTransportStatus(peerId: string) {
+    const directConnected = this.connections.get(peerId)?.connected === true;
     return getProductTransportStatus({
-      directConnected: this.connections.get(peerId)?.connected === true,
+      directConnected,
       relayConnected: this.relayStatus.get(peerId) === 'connected',
       handshakeComplete: this.handshakeStatus.get(peerId) === true,
       failed: this.connectionStatus.get(peerId) === 'failed',
+      peerLive: directConnected || this.isPeerLive(peerId),
     });
   }
 }

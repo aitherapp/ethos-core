@@ -104,6 +104,16 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.5',
+    title: 'Wake Before Relay Ciphertext',
+    date: '2026-09-20',
+    changes: [
+      'Widget always wakes the owner and invalidates zombie relay sessions before sending, so notifications are no longer orphaned without chat text.',
+      'Relay mode is only “usable” when the peer has been recently active; ethos→ethos sendMessage wake-waits the same way when push is configured.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys so embeds pick up the fix.',
+    ],
+  },
+  {
     version: '3.2.4',
     title: 'Restore Removed Visitors',
     date: '2026-09-20',

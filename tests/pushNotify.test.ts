@@ -80,6 +80,7 @@ describe('pushNotify', () => {
 
   it('detects widget wake placeholder message ids', () => {
     expect(isWakePlaceholderMessageId('widget-wake-123')).toBe(true);
+    expect(isWakePlaceholderMessageId('peer-wake-123')).toBe(true);
     expect(isWakePlaceholderMessageId('msg-uuid')).toBe(false);
   });
 });
