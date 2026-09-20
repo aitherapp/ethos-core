@@ -12,6 +12,7 @@ The project is designed around one rule: user content must never fall back to pl
 - Create encrypted group chats with persisted group membership.
 - Transfer encrypted files directly between devices when WebRTC is available.
 - Continue communicating through encrypted Nostr relay fallback when a direct tunnel cannot be established.
+- Optionally deploy your own authenticated private Nostr relay so mesh signaling and fallback avoid public relay defaults after E2EE handoff (see [Opt-in BYO Private Relay](#opt-in-byo-private-relay)).
 - Use ETHOS from mobile Chrome/Safari and desktop browsers.
 - Use the app without email, phone number, signup, or password account.
 - Keep local chat history encrypted in the browser, with an optional passphrase lock.
@@ -96,6 +97,35 @@ Add ETHOS to the **Home Screen** and open it from that icon. Web Push for instal
 - **Test local notification** — browser/OS permission only.
 - **Test gateway push** — full path through your gateway and vendor push network.
 - If gateway tests fail, check HTTPS URL, token, and that you saved after enabling push (registration must succeed).
+
+## Opt-in BYO Private Relay
+
+Public Nostr relays bootstrap signaling and encrypted fallback, but operators can still see routing and timing metadata. **Private relay is off by default.** When you deploy your own authenticated relay, ETHOS can move owner ↔ peer and owner ↔ widget traffic off public defaults after an encrypted credential handoff.
+
+Message and file payloads stay end-to-end encrypted on either path; a private relay mainly reduces dependence on shared public infrastructure.
+
+### Enable for peer chat (owner + peer)
+
+1. **Peer:** Open ETHOS → **Settings** and turn on **Pkarr DHT** (nickname discovery). Find the relay owner via DHT search or an existing node ticket.
+2. **Owner:** Deploy a relay (pick one path):
+   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`relay/README.md`](relay/README.md). After deploy, **open your Worker URL**, copy the relay WebSocket URL (`wss://…`) and auth token from the setup page, then paste them into ETHOS before the token is dismissed.
+   - **Any host:** Run any `wss` service that implements the same ETHOS private-relay Nostr contract (auth token, kinds `41002` / `41003`, size and rate limits). See [`relay/README.md`](relay/README.md) for the wire protocol and security defaults.
+3. **Owner:** In **Settings**, enable **private relay**, paste **Relay URL** and **Auth token**, then **Save Changes**.
+4. **Connect:** Peers bootstrap on **public Nostr** first (signaling only). After the secure session is up, the owner’s relay URL and token are sent over **E2EE handoff**; both sides then use the **private relay only** for that relationship.
+5. If handoff fails, ETHOS stays on the bootstrap session and shows a clear status — use **Retry private relay handoff** in Settings (manual retry; no silent forever-hybrid after a successful handoff).
+
+Rotate tokens, observability notes, and non-Cloudflare hosting are documented under **Rotate secrets** and **Portable API** in [`relay/README.md`](relay/README.md).
+
+### Website widget (owner only)
+
+Visitors do not use Pkarr DHT. When both embed attributes are set, the widget uses **only** your private relay (no public Nostr defaults):
+
+| Attribute | Purpose |
+| :--- | :--- |
+| `data-relay-url` | Private relay WebSocket URL (`wss://…`) |
+| `data-relay-token` | Auth token (appended as `?token=` on the WebSocket URL) |
+
+See [Embeddable Live Chat Widget](#embeddable-live-chat-widget) for the full attribute table and embed snippet.
 
 ## How Connections Work
 
