@@ -110,6 +110,16 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.6',
+    title: 'Opt-in BYO Private Relay',
+    date: '2026-09-20',
+    changes: [
+      'Owners can one-click deploy a private Cloudflare Nostr relay and share credentials after DHT discovery over an encrypted handshake.',
+      'Widget embeds can use data-relay-url and data-relay-token for private-only mesh; public defaults remain until BYO is enabled.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
     version: '3.2.5',
     title: 'Wake Before Relay Ciphertext',
     date: '2026-09-20',
