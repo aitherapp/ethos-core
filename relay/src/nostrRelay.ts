@@ -4,9 +4,13 @@
  */
 import { isAcceptableEventSize, isAllowedRelayKind } from './kinds';
 import {
+  connectionRateKey,
   DEFAULT_EVENT_RATE_LIMIT,
   DEFAULT_EVENT_RATE_WINDOW_MS,
+  RATE_KEY_TOKEN,
+  RATE_LIMIT_STORAGE_KEY,
   RateLimiter,
+  type RateLimiterSnapshot,
 } from './rateLimit';
 
 export const DEFAULT_EVENT_TTL_MS = 15 * 60 * 1000;
@@ -46,6 +50,8 @@ interface StoredEvent {
 }
 
 interface WsAttachment {
+  /** Stable id for per-connection rate limiting across hibernation. */
+  connId: string;
   /** subId → filters */
   subs: Record<string, NostrFilter[]>;
 }
@@ -116,8 +122,8 @@ export class NostrRelay implements DurableObject {
     windowMs: DEFAULT_EVENT_RATE_WINDOW_MS,
   });
   private readonly ttlMs: number;
-  /** Single-tenant DO: one rate bucket for the owner mesh. */
-  private readonly rateKey = 'mesh';
+  /** True after sliding-window state has been loaded from DO storage this isolate life. */
+  private ratesHydrated = false;
 
   constructor(
     private readonly state: DurableObjectState,
@@ -135,7 +141,10 @@ export class NostrRelay implements DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.state.acceptWebSocket(server);
-    server.serializeAttachment({ subs: {} } satisfies WsAttachment);
+    server.serializeAttachment({
+      connId: crypto.randomUUID(),
+      subs: {},
+    } satisfies WsAttachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -179,13 +188,35 @@ export class NostrRelay implements DurableObject {
   }
 
   private getAttachment(ws: WebSocket): WsAttachment {
-    const raw = ws.deserializeAttachment() as WsAttachment | null | undefined;
-    if (raw && typeof raw === 'object' && raw.subs) return raw;
-    return { subs: {} };
+    const raw = ws.deserializeAttachment() as Partial<WsAttachment> | null | undefined;
+    const connId =
+      raw && typeof raw.connId === 'string' && raw.connId.length > 0
+        ? raw.connId
+        : crypto.randomUUID();
+    const subs =
+      raw && typeof raw.subs === 'object' && raw.subs !== null && !Array.isArray(raw.subs)
+        ? raw.subs
+        : {};
+    const att: WsAttachment = { connId, subs };
+    if (!raw || raw.connId !== connId || raw.subs !== subs) {
+      ws.serializeAttachment(att);
+    }
+    return att;
   }
 
   private setAttachment(ws: WebSocket, att: WsAttachment): void {
     ws.serializeAttachment(att);
+  }
+
+  private async hydrateRateLimiter(now = Date.now()): Promise<void> {
+    if (this.ratesHydrated) return;
+    const stored = await this.state.storage.get<RateLimiterSnapshot>(RATE_LIMIT_STORAGE_KEY);
+    this.rateLimiter.restore(stored ?? null, now);
+    this.ratesHydrated = true;
+  }
+
+  private async persistRateLimiter(now = Date.now()): Promise<void> {
+    await this.state.storage.put(RATE_LIMIT_STORAGE_KEY, this.rateLimiter.snapshot(now));
   }
 
   private async handleEvent(ws: WebSocket, rawEvent: unknown, rawFrame: string): Promise<void> {
@@ -205,12 +236,17 @@ export class NostrRelay implements DurableObject {
       return;
     }
 
-    if (!this.rateLimiter.allow(this.rateKey)) {
+    const now = Date.now();
+    await this.hydrateRateLimiter(now);
+    const { connId } = this.getAttachment(ws);
+    // Per-connection and mesh/token ceiling — reject when either is exceeded.
+    if (!this.rateLimiter.allowAll([connectionRateKey(connId), RATE_KEY_TOKEN], now)) {
+      await this.persistRateLimiter(now);
       sendJson(ws, ['OK', event.id, false, 'rate-limited: too many events']);
       return;
     }
+    await this.persistRateLimiter(now);
 
-    const now = Date.now();
     const stored: StoredEvent = { event, expiresAt: now + this.ttlMs };
     await this.state.storage.put(`${STORAGE_PREFIX}${event.id}`, stored);
     await this.enforceStoreBound();

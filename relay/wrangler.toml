@@ -4,9 +4,10 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# Workers Observability off by default: request URLs may include ?token= auth material.
+# If you enable observability, use a low head_sampling_rate (never 1 in production).
 [observability]
-enabled = true
-head_sampling_rate = 1
+enabled = false
 
 # KV for one-click auth-token bootstrap + claim state.
 # One-click / first deploy provisions this; reuse the same Worker for updates

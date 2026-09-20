@@ -8,8 +8,9 @@ Secure-by-default reference **Nostr WebSocket relay** for ETHOS private mesh tra
 - Authenticates WebSocket upgrades via query `?token=` (preferred by ETHOS / `nostr-tools`) or `Authorization: Bearer`
 - Accepts only ETHOS kinds (`41002`, `41003`) with payload size limits
 - Short-lived in-DO event store (default **15 minutes** TTL) with REQ fan-out
-- Rate limits EVENT frames (**120 / token / minute**, ICE-burst friendly)
+- Rate limits EVENT frames (**120 / connection / minute** and **120 / token / minute**; reject if either exceeded; counters persist across DO hibernation)
 - Never logs `event.content`
+- Workers Observability is **disabled** by default (`relay/wrangler.toml`). If you enable it, request URLs (including `?token=`) can appear in Cloudflare logs — keep sampling off or very low.
 
 It is a transport buffer, not a public archive. Defaults fail closed (no anonymous relay).
 
@@ -70,10 +71,11 @@ Or send `Authorization: Bearer <auth-token>` on the upgrade request.
 1. **Auth token** required on WebSocket upgrade — no anonymous REQ/EVENT  
 2. **Kind allowlist** — only `41002` and `41003`  
 3. **Payload limit** — max event frame size 65536 bytes (UTF-8)  
-4. **Rate limit** — 120 EVENT / token / minute  
+4. **Rate limit** — 120 EVENT / connection / minute **and** 120 EVENT / token / minute (either exceeded → reject); sliding window persisted in DO storage across hibernation  
 5. **TTL** — events expire after 15 minutes; store capped  
 6. **No content logging** — never log `event.content` or tokens  
 7. **Credentials** — one-click setup stores auth token in KV; Cloudflare Secret `AUTH_TOKEN` overrides when set  
+8. **Observability** — disabled by default; enabling CF Workers Observability can capture `?token=` in request URLs — keep off or use a low sample rate  
 
 ## HTTP routes
 
