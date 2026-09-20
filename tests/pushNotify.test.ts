@@ -3,6 +3,7 @@ import {
   formatPushNotification,
   shouldSendRemotePush,
   buildNotificationData,
+  resolveNotificationDeepLink,
 } from '../src/lib/pushNotify';
 
 describe('pushNotify', () => {
@@ -56,5 +57,15 @@ describe('pushNotify', () => {
       messageId: 'm1',
       url: './#/chat/p1/m1',
     });
+  });
+
+  it('resolves deep link from payload fields or url hash', () => {
+    expect(
+      resolveNotificationDeepLink({ peerId: 'p1', messageId: 'm1' })
+    ).toEqual({ peerId: 'p1', messageId: 'm1' });
+    expect(
+      resolveNotificationDeepLink({ url: './#/chat/peerABC/msg123' })
+    ).toEqual({ peerId: 'peerABC', messageId: 'msg123' });
+    expect(resolveNotificationDeepLink({ url: './' })).toBeNull();
   });
 });

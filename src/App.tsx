@@ -48,7 +48,7 @@ import {
 } from './lib/pushSettings';
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
-import { parseChatDeepLink } from './lib/pushNotify';
+import { parseChatDeepLink, resolveNotificationDeepLink } from './lib/pushNotify';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -88,9 +88,19 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.93';
+const APP_VERSION = '3.1.94';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.94',
+    title: 'Deep-Link Jump & iOS Input Zoom',
+    date: '2026-09-20',
+    changes: [
+      'Notification taps open the target chat message reliably (pending deep-link state, DOM retry, absolute service-worker URL).',
+      'Message composer uses 16px text on phones so iOS Safari does not zoom the page and push Send off-screen.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.93',
     title: 'Mobile Composer & Toast Fixes',
@@ -827,8 +837,8 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
-  const jumpToMessageIdRef = useRef<string | null>(null);
   const pendingJumpNoticeRef = useRef(false);
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ peerId: string; messageId: string } | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageHistoryStoreRef = useRef(new IndexedDbMessageHistoryStore());
@@ -1000,13 +1010,13 @@ export default function App() {
   peersRef.current = peers;
 
   useEffect(() => {
-    if (jumpToMessageIdRef.current) {
+    if (pendingDeepLink) {
       shouldAutoScrollRef.current = false;
       return;
     }
     shouldAutoScrollRef.current = true;
     scrollChatToBottom();
-  }, [activePeer, activeGroup]);
+  }, [activePeer, activeGroup, pendingDeepLink]);
 
   const clearChatDeepLinkHash = () => {
     if (!parseChatDeepLink(window.location.hash)) return;
@@ -1018,7 +1028,6 @@ export default function App() {
     setActivePeer(peerId);
     setActiveGroup(null);
     setMobilePanel('chat');
-    jumpToMessageIdRef.current = messageId;
     pendingJumpNoticeRef.current = false;
     shouldAutoScrollRef.current = false;
     if (!peersRef.current.includes(peerId)) {
@@ -1029,6 +1038,8 @@ export default function App() {
     if (window.location.hash !== hash) {
       window.history.replaceState(null, '', hash);
     }
+    // State (not only a ref) so the jump effect re-runs even when already on this peer.
+    setPendingDeepLink({ peerId, messageId });
   }, []);
 
   useEffect(() => {
@@ -1040,8 +1051,10 @@ export default function App() {
 
     const onSwMessage = (event: MessageEvent) => {
       if (event.data?.type !== 'ethos_notification_open') return;
-      const { peerId, messageId } = event.data as { peerId?: string; messageId?: string };
-      if (peerId && messageId) applyChatDeepLink(peerId, messageId);
+      const resolved = resolveNotificationDeepLink(
+        event.data as { peerId?: string; messageId?: string; url?: string }
+      );
+      if (resolved) applyChatDeepLink(resolved.peerId, resolved.messageId);
     };
 
     window.addEventListener('hashchange', fromHash);
@@ -1053,9 +1066,14 @@ export default function App() {
   }, [applyChatDeepLink]);
 
   useEffect(() => {
-    const targetId = jumpToMessageIdRef.current;
-    if (!targetId || !activePeer) return;
+    if (!pendingDeepLink) return;
+    if (activePeer !== pendingDeepLink.peerId) return;
+    if (mobilePanel !== 'chat') {
+      setMobilePanel('chat');
+      return;
+    }
 
+    const targetId = pendingDeepLink.messageId;
     const inThread = messages.some(
       (m) =>
         m.id === targetId &&
@@ -1074,20 +1092,32 @@ export default function App() {
       return;
     }
 
-    requestAnimationFrame(() => {
-      document.getElementById(`msg-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`msg-${targetId}`);
+      if (!el) {
+        if (attempts++ < 45) {
+          requestAnimationFrame(tryScroll);
+        }
+        return;
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightedMessageId(targetId);
       window.setTimeout(() => {
         setHighlightedMessageId((current) => (current === targetId ? null : current));
       }, 2200);
-      if (jumpToMessageIdRef.current === targetId) {
-        jumpToMessageIdRef.current = null;
-        pendingJumpNoticeRef.current = false;
-      }
-      // Drop the deep-link hash so peer/message updates cannot re-trigger the jump.
+      pendingJumpNoticeRef.current = false;
+      setPendingDeepLink(null);
+      // Clear hash only after a successful jump so cold-open / retries still work.
       clearChatDeepLinkHash();
-    });
-  }, [messages, activePeer]);
+    };
+    requestAnimationFrame(tryScroll);
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDeepLink, messages, activePeer, mobilePanel]);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
@@ -2085,7 +2115,7 @@ export default function App() {
                   <input 
                     type="text" 
                     placeholder={activeGroup ? "Message Group..." : "Message Peer..."} 
-                    className="bg-transparent flex-1 outline-none text-xs sm:text-sm placeholder-gray-700 font-mono w-0 min-w-0"
+                    className="bg-transparent flex-1 outline-none text-base sm:text-sm placeholder-gray-700 font-mono w-0 min-w-0"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {

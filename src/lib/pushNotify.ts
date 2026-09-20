@@ -45,3 +45,27 @@ export function parseChatDeepLink(hash: string): { peerId: string; messageId: st
   if (!match) return null;
   return { peerId: match[1], messageId: match[2] };
 }
+
+/** Resolve peer/message from SW notification payload or a deep-link URL/hash. */
+export function resolveNotificationDeepLink(input: {
+  peerId?: string;
+  messageId?: string;
+  url?: string;
+  hash?: string;
+}): { peerId: string; messageId: string } | null {
+  if (input.peerId && input.messageId) {
+    return { peerId: input.peerId, messageId: input.messageId };
+  }
+  const hash =
+    input.hash ||
+    (input.url
+      ? (() => {
+          try {
+            return new URL(input.url, 'https://ethos.local/').hash;
+          } catch {
+            return '';
+          }
+        })()
+      : '');
+  return parseChatDeepLink(hash);
+}

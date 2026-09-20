@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ethos-v3.1.93'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.1.94'; // Increment for cache busting
 const ASSETS = [
   './',
   './index.html',
@@ -69,18 +69,22 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data || {};
-  const targetUrl = data.url || './';
+  const targetUrl = data.url
+    ? new URL(data.url, self.registration.scope).href
+    : self.registration.scope;
+
   event.waitUntil((async () => {
     const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of all) {
-      if ('focus' in client) {
-        client.postMessage({
-          type: 'ethos_notification_open',
-          peerId: data.peerId,
-          messageId: data.messageId,
-        });
-        return client.focus();
-      }
+      if (!('focus' in client)) continue;
+      await client.focus();
+      client.postMessage({
+        type: 'ethos_notification_open',
+        peerId: data.peerId,
+        messageId: data.messageId,
+        url: data.url || targetUrl,
+      });
+      return;
     }
     if (clients.openWindow) return clients.openWindow(targetUrl);
   })());

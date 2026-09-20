@@ -319,6 +319,11 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.94 – Deep-Link Jump & iOS Input Zoom (2026-09-20)
+- Notification taps jump to the target message again (state-driven deep link, DOM retry, absolute open URL in the service worker).
+- Composer input is 16px on phones so iOS does not zoom the viewport (which was pushing Send off-screen).
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.93 – Mobile Composer & Toast Fixes (2026-09-20)
 - Status toasts auto-dismiss after a few seconds, dismiss on tap, and sit above the composer on phones so they do not cover Settings Save.
 - Push enable/test feedback stays in the Settings panel while Settings is open (no overlapping global toast).
