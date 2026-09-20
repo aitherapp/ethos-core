@@ -4,15 +4,27 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# Durable Object binding — wired in Task 4.
-[[durable_objects.bindings]]
-name = "RELAY"
-class_name = "RelayObject"
-script_name = "ethos-private-relay"
-
 [observability]
 enabled = true
 head_sampling_rate = 1
 
-# Optional secrets (CLI — never commit values):
-#   RELAY_AUTH_TOKEN
+# KV for one-click auth-token bootstrap + claim state.
+# One-click / first deploy provisions this; reuse the same Worker for updates
+# (do not click Deploy to Cloudflare again under an existing project name).
+[[kv_namespaces]]
+binding = "CONFIG"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "NostrRelay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NostrRelay"]
+
+# Optional secrets (CLI / Advanced — never commit values):
+#   AUTH_TOKEN
+# Optional vars:
+#   EVENT_TTL_MS  (default 900000 = 15 minutes)
