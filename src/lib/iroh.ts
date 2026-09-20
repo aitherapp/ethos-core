@@ -21,6 +21,21 @@ import { normalizeGroupMembers } from './groups';
 import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMetadata, PeerMetadata, saveEncryptedGroups, saveEncryptedPeerMetadata } from './messageHistory';
 import { notifyPeerViaGateway } from './peerPush';
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
+import {
+  buildPrivateRelayHandshakeFields,
+  parsePrivateRelayHandoff,
+  type PrivateRelayHandoffFields,
+} from './privateRelayHandoff';
+import {
+  loadPrivateRelaySettings,
+  savePrivateRelaySettings,
+} from './privateRelaySettings';
+import {
+  attemptPrivateRelayFromHandoff,
+  attemptPrivateRelayFromSettings,
+  clearedPrivateRelaySettings,
+  mergeSignalHandshakeFields,
+} from './privateRelayWiring';
 
 export interface PeerPushProfile {
   pushGatewayUrl: string | null;
@@ -539,6 +554,8 @@ export class IrohManager {
   private pushContentMode: PushContentMode = 'Sender';
   private pushTriggerMode: PushTriggerMode = 'Background only';
   private peerPushProfiles: Map<string, PeerPushProfile> = new Map();
+  private peerPrivateRelayHandoffs: Map<string, PrivateRelayHandoffFields> = new Map();
+  private privateRelayAttempted: Set<string> = new Set();
 
   setPushSubscription(subscription: PushSubscription | null) {
     this.pushSubscription = subscription;
@@ -581,11 +598,12 @@ export class IrohManager {
    */
   rebroadcastPushProfile() {
     if (!this.currentPeerId || !this.identity) return;
-    const fields = this.pushHandshakeFields();
+    const fields = this.handshakeControlFields();
     if (!Object.keys(fields).length) return;
 
     const peerIds = new Set<string>([
       ...this.peerPushProfiles.keys(),
+      ...this.peerPrivateRelayHandoffs.keys(),
       ...this.connections.keys(),
       ...this.relayStatus.keys(),
       ...this.handshakeStatus.keys(),
@@ -613,6 +631,18 @@ export class IrohManager {
       pushContentMode: this.pushContentMode,
       pushTriggerMode: this.pushTriggerMode,
     };
+  }
+
+  private privateRelayHandshakeFields(): Record<string, string> {
+    return buildPrivateRelayHandshakeFields(loadPrivateRelaySettings());
+  }
+
+  /** Push prefs + private relay credentials for helo / helo-ack / push-profile. */
+  private handshakeControlFields(): Record<string, unknown> {
+    return mergeSignalHandshakeFields(
+      this.pushHandshakeFields(),
+      this.privateRelayHandshakeFields()
+    );
   }
 
   private storePeerPushFromSignal(peerId: string, signal: {
@@ -647,6 +677,101 @@ export class IrohManager {
         pushEndpoint: endpoint,
       });
     }
+  }
+
+  private privateRelayAttemptKey(handoff: PrivateRelayHandoffFields): string {
+    return `${handoff.relayUrl}\0${handoff.relayAuthToken}`;
+  }
+
+  private storePeerPrivateRelayFromSignal(
+    peerId: string,
+    signal: Record<string, unknown>
+  ) {
+    const handoff = parsePrivateRelayHandoff(signal);
+    if (!handoff) return;
+    this.peerPrivateRelayHandoffs.set(peerId, handoff);
+    const key = this.privateRelayAttemptKey(handoff);
+    if (this.privateRelayAttempted.has(key)) return;
+    this.privateRelayAttempted.add(key);
+    void this.runPrivateRelayAttempt(handoff);
+  }
+
+  private async probePrivateRelayConnect(authedUrl: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws: WebSocket | undefined;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+        resolve(ok);
+      };
+      try {
+        ws = new WebSocket(authedUrl);
+      } catch {
+        resolve(false);
+        return;
+      }
+      const timer = window.setTimeout(() => finish(false), 8000);
+      ws.onopen = () => finish(true);
+      ws.onerror = () => finish(false);
+      ws.onclose = () => finish(false);
+    });
+  }
+
+  private async runPrivateRelayAttempt(
+    handoff: PrivateRelayHandoffFields
+  ): Promise<boolean> {
+    return attemptPrivateRelayFromHandoff(handoff, {
+      setRelays: (relays) => this.setRelays(relays),
+      notifyStatus: (type, message) => this.notifyStatus(type, message),
+      probeConnect: (url) => this.probePrivateRelayConnect(url),
+    });
+  }
+
+  /**
+   * Owner Settings apply: one connect attempt then private-only pool, or warn and keep prior relays.
+   */
+  async applyPrivateRelayFromSettings(): Promise<boolean> {
+    const settings = loadPrivateRelaySettings();
+    const fields = buildPrivateRelayHandshakeFields(settings);
+    if (fields.relayUrl && fields.relayAuthToken) {
+      this.privateRelayAttempted.delete(
+        this.privateRelayAttemptKey({
+          relayUrl: fields.relayUrl,
+          relayAuthToken: fields.relayAuthToken,
+        })
+      );
+    }
+    const ok = await attemptPrivateRelayFromSettings(settings, {
+      setRelays: (relays) => this.setRelays(relays),
+      notifyStatus: (type, message) => this.notifyStatus(type, message),
+      probeConnect: (url) => this.probePrivateRelayConnect(url),
+    });
+    if (ok) {
+      this.rebroadcastPushProfile();
+    }
+    return ok;
+  }
+
+  /**
+   * Manual one-shot retry from a stored peer handoff (or owner settings). No timers / auto-retry.
+   */
+  async retryPrivateRelayHandoff(peerId?: string): Promise<boolean> {
+    const handoff = peerId
+      ? this.peerPrivateRelayHandoffs.get(peerId)
+      : this.peerPrivateRelayHandoffs.values().next().value;
+    if (handoff) {
+      this.privateRelayAttempted.delete(this.privateRelayAttemptKey(handoff));
+      this.privateRelayAttempted.add(this.privateRelayAttemptKey(handoff));
+      return this.runPrivateRelayAttempt(handoff);
+    }
+    return this.applyPrivateRelayFromSettings();
   }
 
   private pushEndpoint: string | null = null;
@@ -877,6 +1002,7 @@ export class IrohManager {
                  this.handleRelayConfirm(signal.senderId, signal);
                } else if (signal.type === 'push-profile') {
                  this.storePeerPushFromSignal(signal.senderId, signal);
+                 this.storePeerPrivateRelayFromSignal(signal.senderId, signal);
                } else if (signal.type === 'relay-message') {
                  // Legacy relay data path kept for older builds during rollout.
                  this.handleRelayMessage(signal.senderId, signal);
@@ -1055,7 +1181,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcPublicKey: this.identity.pqcPublicKey,
         displayName: this.identity.displayName,
-        ...this.pushHandshakeFields(),
+        ...this.handshakeControlFields(),
       });
       return;
     }
@@ -1081,7 +1207,7 @@ export class IrohManager {
       classicalPublicKey: this.identity.classicalPublicKey,
       pqcPublicKey: this.identity.pqcPublicKey,
       displayName: this.identity.displayName,
-      ...this.pushHandshakeFields(),
+      ...this.handshakeControlFields(),
     });
   }
 
@@ -1121,6 +1247,7 @@ export class IrohManager {
       }
 
       this.storePeerPushFromSignal(peerId, signal);
+      this.storePeerPrivateRelayFromSignal(peerId, signal);
 
       const ack = {
         senderId: this.currentPeerId,
@@ -1129,7 +1256,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcCiphertext: ciphertext,
         displayName: this.identity.displayName,
-        ...this.pushHandshakeFields(),
+        ...this.handshakeControlFields(),
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
@@ -1175,6 +1302,7 @@ export class IrohManager {
       }
 
       this.storePeerPushFromSignal(peerId, signal);
+      this.storePeerPrivateRelayFromSignal(peerId, signal);
 
       this.sendNostrSignal(peerId, {
         senderId: this.currentPeerId,
@@ -2648,7 +2776,7 @@ export class IrohManager {
     this.currentPeerId = id;
   }
 
-  updateRelays(relays: string[]) {
+  setRelays(relays: string[]) {
     if (!Array.isArray(relays) || relays.length === 0) return;
     NOSTR_RELAYS = relays;
     localStorage.setItem('nexus_custom_relays', JSON.stringify(relays));
@@ -2656,7 +2784,14 @@ export class IrohManager {
     this.reconnect();
   }
 
+  updateRelays(relays: string[]) {
+    this.setRelays(relays);
+  }
+
   resetRelays() {
+    savePrivateRelaySettings(clearedPrivateRelaySettings());
+    this.peerPrivateRelayHandoffs.clear();
+    this.privateRelayAttempted.clear();
     NOSTR_RELAYS = [...DEFAULT_NOSTR_RELAYS];
     localStorage.removeItem('nexus_custom_relays');
     this.notifyStatus('info', 'Relays reset to default.');
