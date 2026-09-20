@@ -29,7 +29,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.0" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.1" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -321,6 +321,10 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.1 – Deploy Lint Fix (2026-09-20)
+- Fixed TypeScript error in `widgetDeliverOutbound` test that blocked the v3.2.0 Pages deploy.
+- Refreshed app and service-worker cache versions.
+
 ### v3.2.0 – BYO Push & Embeddable Widget (2026-09-20)
 - Minor milestone: opt-in BYO push gateway, reliable iPhone wake-ups, and a production-ready site widget.
 - Background push via your own HTTPS gateway; notification deep-links open the right chat on iOS PWA.

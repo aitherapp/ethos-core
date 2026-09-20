@@ -92,6 +92,15 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.1',
+    title: 'Deploy Lint Fix',
+    date: '2026-09-20',
+    changes: [
+      'Fixed a TypeScript error in the widget deliver-outbound test that blocked the v3.2.0 Pages deploy.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
     version: '3.2.0',
     title: 'BYO Push & Embeddable Widget',
     date: '2026-09-20',
