@@ -23,7 +23,10 @@ export function shouldSendRemotePush(opts: {
   if (opts.triggerMode === 'Always') {
     return true;
   }
-  return !opts.directConnected && !opts.relayConnected;
+  // Background only: skip push only when a live direct tunnel is up.
+  // A stale "relay connected" flag must not suppress mobile wake-ups.
+  void opts.relayConnected;
+  return !opts.directConnected;
 }
 
 export function buildNotificationData(opts: {

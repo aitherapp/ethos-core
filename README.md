@@ -79,7 +79,7 @@ Background push is **off by default**. Turn it on when you want alerts while the
 | **Gateway URL** | HTTPS base URL of your push gateway (no path suffix). |
 | **Auth token** | Bearer token your gateway expects (stored locally in the browser). |
 | **Content mode** | **Minimal** — title `ETHOS`, body `New message`. **Sender** — title includes sender name, generic body. **Preview** — sender name plus a short preview (up to ~80 characters). |
-| **Notify when** | **Background only** (default) — remote push when the recipient is not reachable on live transport. **Always** — also request push for each new message (respects gateway rate limits). |
+| **Notify when** | **Background only** (default) — remote push unless a live **direct** tunnel is up (relay-only still wakes mobiles). **Always** — also request push for each new message (respects gateway rate limits). |
 
 Your choices are shared with peers over the encrypted handshake so senders (including the embeddable widget) know which gateway URL and token to use when notifying you.
 
@@ -319,6 +319,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.1.95 – Push Wake-Up Reliability (2026-09-20)
+- Background-only mode still requests remote push when only relay appears connected (stale relay no longer blocks iPhone wake-ups).
+- App startup reuses the existing Web Push subscription instead of rotating it every load; after enable, the endpoint is re-broadcast to peers.
+- Service worker calls `clients.claim()` on activate after cache bumps.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.94 – Deep-Link Jump & iOS Input Zoom (2026-09-20)
 - Notification taps jump to the target message again (state-driven deep link, DOM retry, absolute open URL in the service worker).
 - Composer input is 16px on phones so iOS does not zoom the viewport (which was pushing Send off-screen).

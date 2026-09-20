@@ -19,7 +19,8 @@ export function shouldSendPeerPush(opts: {
   directConnected: boolean;
   relayConnected: boolean;
 }): boolean {
-  return opts.hasPushEndpoint && !opts.directConnected && !opts.relayConnected;
+  void opts.relayConnected;
+  return opts.hasPushEndpoint && !opts.directConnected;
 }
 
 export function buildPeerPushArgs(senderName: string): {

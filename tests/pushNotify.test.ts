@@ -42,6 +42,14 @@ describe('pushNotify', () => {
         relayConnected: false,
       })
     ).toBe(false);
+    // Relay-only must still wake backgrounded mobiles.
+    expect(
+      shouldSendRemotePush({
+        triggerMode: 'Background only',
+        directConnected: false,
+        relayConnected: true,
+      })
+    ).toBe(true);
     expect(
       shouldSendRemotePush({
         triggerMode: 'Always',

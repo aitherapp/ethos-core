@@ -89,12 +89,18 @@ export async function enablePushPipeline(
   settings: PushSettings,
   fetchFn: typeof fetch = fetch,
 ): Promise<boolean> {
-  return setupPushFromSettings(settings, {
+  const ok = await setupPushFromSettings(settings, {
     fetchVapidPublicKey,
-    subscribeToWebPush: (key) => subscribeToWebPush(key, { replaceExisting: true }),
+    // Reuse an existing browser subscription when possible. Replacing on every
+    // page load invalidates the endpoint peers already stored from handshake.
+    subscribeToWebPush: (key) => subscribeToWebPush(key, { replaceExisting: false }),
     registerPushSubscription,
     setPushSubscription: (sub) => iroh.setPushSubscription(sub),
     applyGatewayPrefs: (prefs) => iroh.applyPushGatewayPrefs(prefs),
     fetchFn,
   });
+  if (ok) {
+    iroh.rebroadcastPushProfile();
+  }
+  return ok;
 }

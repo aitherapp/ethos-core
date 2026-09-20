@@ -538,6 +538,32 @@ export class IrohManager {
     return this.peerPushProfiles.get(peerId) || null;
   }
 
+  /**
+   * Re-advertise the current push subscription/gateway prefs to peers we already
+   * know, so a refreshed endpoint after SW update is not stuck on the sender.
+   */
+  rebroadcastPushProfile() {
+    if (!this.currentPeerId || !this.identity) return;
+    const fields = this.pushHandshakeFields();
+    if (!Object.keys(fields).length) return;
+
+    const peerIds = new Set<string>([
+      ...this.peerPushProfiles.keys(),
+      ...this.connections.keys(),
+      ...this.relayStatus.keys(),
+      ...this.handshakeStatus.keys(),
+    ]);
+
+    for (const peerId of peerIds) {
+      if (peerId === this.currentPeerId) continue;
+      this.sendNostrSignal(peerId, {
+        senderId: this.currentPeerId,
+        type: 'push-profile',
+        ...fields,
+      });
+    }
+  }
+
   private pushHandshakeFields(): Record<string, unknown> {
     if (!this.pushGatewayUrl || !this.pushAuthToken || !this.pushSubscription) {
       return {};
@@ -802,6 +828,8 @@ export class IrohManager {
                  this.handleRelayHelloAck(signal.senderId, signal);
                } else if (signal.type === 'relay-confirm') {
                  this.handleRelayConfirm(signal.senderId, signal);
+               } else if (signal.type === 'push-profile') {
+                 this.storePeerPushFromSignal(signal.senderId, signal);
                } else if (signal.type === 'relay-message') {
                  // Legacy relay data path kept for older builds during rollout.
                  this.handleRelayMessage(signal.senderId, signal);

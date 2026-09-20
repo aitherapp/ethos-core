@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ethos-v3.1.94'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.1.95'; // Increment for cache busting
 const ASSETS = [
   './',
   './index.html',
@@ -17,11 +17,13 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
-    })
+      await self.clients.claim();
+    })()
   );
 });
 

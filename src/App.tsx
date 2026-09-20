@@ -88,9 +88,20 @@ const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
 // Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.94';
+const APP_VERSION = '3.1.95';
 
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.1.95',
+    title: 'Push Wake-Up Reliability',
+    date: '2026-09-20',
+    changes: [
+      'Background-only push still fires when only relay looks connected, so backgrounded iPhones get wake-ups again.',
+      'Startup no longer replaces the Web Push subscription on every load; refreshed endpoints are re-broadcast to peers.',
+      'Service worker claims clients on activate after cache updates.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.94',
     title: 'Deep-Link Jump & iOS Input Zoom',

@@ -33,7 +33,7 @@ describe('peerPush helpers', () => {
     ).toBe(false);
     expect(
       shouldSendPeerPush({ hasPushEndpoint: true, directConnected: false, relayConnected: true })
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldSendPeerPush({ hasPushEndpoint: false, directConnected: false, relayConnected: false })
     ).toBe(false);
@@ -49,10 +49,18 @@ describe('peerPush helpers', () => {
     expect(JSON.stringify(args)).not.toContain('secret plaintext');
   });
 
-  it('peerPushCallArgs returns null when peer is reachable or has no endpoint', () => {
+  it('peerPushCallArgs returns null when peer is directly reachable or has no endpoint', () => {
     expect(peerPushCallArgs('https://push.example/x', 'A', true, false)).toBeNull();
-    expect(peerPushCallArgs('https://push.example/x', 'A', false, true)).toBeNull();
     expect(peerPushCallArgs(null, 'A', false, false)).toBeNull();
+  });
+
+  it('peerPushCallArgs returns args when only relay is up (still need mobile wake)', () => {
+    expect(peerPushCallArgs('https://push.example/x', 'A', false, true)).toEqual({
+      endpoint: 'https://push.example/x',
+      visitorId: 'A',
+      pagePath: 'chat',
+      messageText: 'New message',
+    });
   });
 
   it('peerPushCallArgs returns generic args when offline with endpoint', () => {
@@ -139,6 +147,21 @@ describe('notifyPeerViaGateway', () => {
     });
     expect(ok).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('still sends Background only push when only relay looks connected', async () => {
+    const fetchFn = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+    const ok = await notifyPeerViaGateway(profile(), {
+      senderName: 'Alice',
+      previewText: 'hi',
+      localPeerId: 'p',
+      messageId: 'm',
+      directConnected: false,
+      relayConnected: true,
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+    expect(ok).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it('sends when trigger mode is Always even if peer is connected', async () => {
