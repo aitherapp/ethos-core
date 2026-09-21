@@ -30,7 +30,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.7" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.8" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -355,6 +355,12 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.8 – Mobile Soft Resume & Discreet Wake (2026-09-21)
+- Background wake pushes say “Incoming connection…” instead of claiming a delivered “New message”.
+- Foregrounding the app (or receiving a push while a client is open) soft-resumes relay sockets without tapping RECONNECT.
+- Failed wake-and-send queues the message on the sender until the peer is reachable; handshakes are throttled to avoid private-relay rate limits.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
 ### v3.2.7 – Settings Docs Links (2026-09-20)
 - Settings help for push gateway and private relay links to the GitHub `push-gateway/` and `relay/` folders.
 - Bumped the app, service-worker, and `widget.js?v=` cache keys.

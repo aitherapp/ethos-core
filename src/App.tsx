@@ -127,7 +127,16 @@ const ABOUT_CHANGELOG = [
       'Background wake pushes say “Incoming connection…” instead of claiming a delivered “New message”.',
       'Foregrounding the app (or receiving a push while a client is open) soft-resumes relay sockets without tapping RECONNECT.',
       'Failed wake-and-send queues the message on the sender until the peer is reachable; handshakes are throttled to avoid private-relay rate limits.',
-      'Bumped the app and service-worker cache version for this release.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
+    version: '3.2.7',
+    title: 'Settings Docs Links',
+    date: '2026-09-20',
+    changes: [
+      'Settings help for push gateway and private relay links to the GitHub push-gateway/ and relay/ folders.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
     ],
   },
   {
