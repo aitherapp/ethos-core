@@ -1204,7 +1204,6 @@ export class IrohManager {
   private ensureRelayHandshake(peerId: string) {
     const existingRelayStatus = this.relayStatus.get(peerId);
     if (!this.currentPeerId || !this.identity || existingRelayStatus === 'connected') return;
-    if (existingRelayStatus === 'connecting' && this.relaySessions.has(peerId)) return;
 
     const now = Date.now();
     if (
@@ -1223,6 +1222,8 @@ export class IrohManager {
     this.lastHandshakeAt.set(peerId, now);
 
     if (role === 'initiator') {
+      // Re-publish hello on throttle ticks while still "connecting" so a sleeping
+      // peer can catch a later attempt after wake (do not stick on the first publish).
       const sessionId = this.relaySessions.get(peerId) || uuidv4();
       this.relaySessions.set(peerId, sessionId);
       this.sendNostrSignal(peerId, {
@@ -2114,6 +2115,20 @@ export class IrohManager {
 
     this.rebindNostrSubscriptions(previousRelays);
     this.lastResumeAt = Date.now();
+
+    // Nudge known contacts so a waiting sender can complete handshake / flush outbox.
+    const knownPeers = new Set<string>([
+      ...this.peerMetadata.keys(),
+      ...this.peerPushProfiles.keys(),
+      ...this.handshakeStatus.keys(),
+      ...this.lastPeerActivityAt.keys(),
+    ]);
+    for (const peerId of knownPeers) {
+      if (peerId === this.currentPeerId) continue;
+      this.ensureRelayHandshake(peerId);
+      void this.flushOutboxForPeer(peerId).catch(() => {});
+    }
+
     return true;
   }
 
