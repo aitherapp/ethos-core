@@ -22,6 +22,13 @@ import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMet
 import { notifyPeerViaGateway } from './peerPush';
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
 import {
+  enqueueOutbox,
+  listOutboxForPeer,
+  removeOutbox,
+  type OutboxEntry,
+} from './messageOutbox';
+import { planPeerSendAction } from './peerSendPlan';
+import {
   buildPrivateRelayHandshakeFields,
   parseNostrSubscriptionKey,
   parsePrivateRelayHandoff,
@@ -41,6 +48,11 @@ import {
   clearedPrivateRelaySettings,
   mergeSignalHandshakeFields,
 } from './privateRelayWiring';
+import {
+  HANDSHAKE_BACKOFF_AFTER_RATE_LIMIT_MS,
+  shouldResumeSignaling,
+  shouldSendHandshakeNow,
+} from './signalingResume';
 
 export interface PeerPushProfile {
   pushGatewayUrl: string | null;
@@ -818,6 +830,11 @@ export class IrohManager {
   private relayHealth: Map<string, SignalRelayHealth> = new Map();
   private connectionAttemptStartedAt: Map<string, number> = new Map();
   private noResponseTimers: Map<string, number> = new Map();
+  private lastResumeAt: number | undefined;
+  private lastHandshakeAt: Map<string, number> = new Map();
+  private handshakeBackoffUntil: Map<string, number> = new Map();
+  private globalHandshakeBackoffUntil: number | undefined;
+  private messageOutbox: OutboxEntry[] = [];
 
   private static readonly SIGNAL_MAX_AGE_SEC = 300;
   private static readonly DISCOVERY_ANNOUNCEMENT_MAX_AGE_MS = IrohManager.SIGNAL_MAX_AGE_SEC * 1000;
@@ -1135,6 +1152,7 @@ export class IrohManager {
       window.clearTimeout(timeoutId);
       this.noResponseTimers.delete(peerId);
     }
+    void this.flushOutboxForPeer(peerId).catch(() => {});
   }
 
   private isPeerLive(peerId: string, now = Date.now()) {
@@ -1188,8 +1206,21 @@ export class IrohManager {
     if (!this.currentPeerId || !this.identity || existingRelayStatus === 'connected') return;
     if (existingRelayStatus === 'connecting' && this.relaySessions.has(peerId)) return;
 
+    const now = Date.now();
+    if (
+      !shouldSendHandshakeNow(
+        this.lastHandshakeAt.get(peerId),
+        now,
+        2000,
+        this.handshakeBackoffUntil.get(peerId) ?? this.globalHandshakeBackoffUntil,
+      )
+    ) {
+      return;
+    }
+
     const role = getDeterministicRelayRole(this.currentPeerId, peerId);
     this.relayStatus.set(peerId, 'connecting');
+    this.lastHandshakeAt.set(peerId, now);
 
     if (role === 'initiator') {
       const sessionId = this.relaySessions.get(peerId) || uuidv4();
@@ -1486,10 +1517,33 @@ export class IrohManager {
           if (msg.includes('rate-limited') || msg.includes('Policy violated') || msg.includes('timed out')) {
             this.relayHealth.set(url, { status: 'unhealthy', lastCheck: Date.now() });
           }
+          if (msg.includes('rate-limited')) {
+            this.applyHandshakeRateLimitBackoff(topicId);
+          }
         });
       });
     });
    }
+
+  private applyHandshakeRateLimitBackoff(topicId: string) {
+    const backoffUntil = Date.now() + HANDSHAKE_BACKOFF_AFTER_RATE_LIMIT_MS;
+    const peerId = topicId.endsWith(RELAY_DATA_TOPIC_SUFFIX)
+      ? topicId.slice(0, -RELAY_DATA_TOPIC_SUFFIX.length)
+      : topicId;
+    const knownPeer =
+      this.relayStatus.has(peerId) ||
+      this.handshakeStatus.has(peerId) ||
+      this.lastHandshakeAt.has(peerId) ||
+      this.connections.has(peerId) ||
+      this.peerPushProfiles.has(peerId) ||
+      this.peerPks.has(peerId) ||
+      topicId.endsWith(RELAY_DATA_TOPIC_SUFFIX);
+    if (knownPeer) {
+      this.handshakeBackoffUntil.set(peerId, backoffUntil);
+      return;
+    }
+    this.globalHandshakeBackoffUntil = backoffUntil;
+  }
 
   private async sendNostrSignal(topicId: string, payload: any) {
     return this.sendNostrEvent(topicId, payload, SIGNAL_KIND);
@@ -2037,6 +2091,32 @@ export class IrohManager {
      return null;
     }
 
+  /**
+   * Soft resume: re-open relay sockets and rebind topic subscriptions without
+   * wiping secrets, ratchet, relaySessions, or WebRTC connections.
+   * Throttled to at most once per 3s.
+   */
+  async resumeSignaling(): Promise<boolean> {
+    if (!shouldResumeSignaling(this.lastResumeAt, Date.now())) {
+      return false;
+    }
+
+    const previousRelays = [...NOSTR_RELAYS];
+    await Promise.all(
+      NOSTR_RELAYS.map(async (url) => {
+        try {
+          await (this.nostrPool as any).ensureRelay(url);
+        } catch {
+          /* ignore */
+        }
+      }),
+    );
+
+    this.rebindNostrSubscriptions(previousRelays);
+    this.lastResumeAt = Date.now();
+    return true;
+  }
+
   async reconnect() {
     // Destroy all existing peer connections
     this.connections.forEach((peer, id) => {
@@ -2444,7 +2524,7 @@ export class IrohManager {
     return { id: msgId, senderId: this.identity!.id, receiverId: groupId, groupId, type: 'text' as const, content: text, iv: '', timestamp, expiresAt };
   }
 
-  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean } = {}) {
+  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean; messageId?: string; skipOutbox?: boolean } = {}) {
     const attempt = async (): Promise<SecureMessage | null> => {
       const conn = this.connections.get(peerId);
       const ratchetState = this.ratchetStates.get(peerId);
@@ -2463,7 +2543,7 @@ export class IrohManager {
       this.ratchetStates.set(peerId, state);
 
       const msg: SecureMessage = {
-        id: uuidv4(),
+        id: options.messageId || uuidv4(),
         senderId: this.identity!.id,
         receiverId: peerId,
         type: 'text',
@@ -2492,6 +2572,7 @@ export class IrohManager {
           messageId: msg.id,
           directConnected: Boolean(conn?.connected),
           relayConnected: this.relayStatus.get(peerId) === 'connected',
+          purpose: 'delivery',
         }).catch(() => {});
       }
       return { ...msg, content: text };
@@ -2509,13 +2590,23 @@ export class IrohManager {
       return null;
     }
 
-    const peerProfile = this.getPeerPushProfile(peerId);
+    if (options.skipOutbox) {
+      this.ensureRelayHandshake(peerId);
+      return null;
+    }
+
     if (this.relayStatus.get(peerId) === 'connected' && !this.isPeerLive(peerId)) {
       this.invalidatePeerSession(peerId);
     }
-    this.ensureRelayHandshake(peerId);
 
-    if (peerProfile) {
+    const peerProfile = this.getPeerPushProfile(peerId);
+    const plan = planPeerSendAction({
+      transportUsable: this.getPeerTransportStatus(peerId).usable,
+      hasPushProfile: Boolean(peerProfile),
+    });
+
+    if (plan.action === 'wake-and-wait' && peerProfile) {
+      this.ensureRelayHandshake(peerId);
       notifyPeerViaGateway(peerProfile, {
         senderName: this.identity?.displayName || 'ETHOS Peer',
         previewText: text,
@@ -2523,6 +2614,7 @@ export class IrohManager {
         messageId: `peer-wake-${Date.now()}`,
         directConnected: false,
         relayConnected: false,
+        purpose: 'wake',
       }).catch(() => {});
 
       const deadline = Date.now() + 15_000;
@@ -2534,9 +2626,50 @@ export class IrohManager {
         this.ensureRelayHandshake(peerId);
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
+    } else if (plan.action === 'send-now') {
+      this.ensureRelayHandshake(peerId);
+      sent = await attempt();
+      if (sent) return sent;
+    } else {
+      this.ensureRelayHandshake(peerId);
     }
 
-    return null;
+    const queuedId = options.messageId || uuidv4();
+    this.messageOutbox = enqueueOutbox(this.messageOutbox, {
+      id: queuedId,
+      peerId,
+      text,
+      ephemeral: options.ephemeral,
+      createdAt: Date.now(),
+    });
+    this.notifyStatus('info', 'Message queued — will send when the peer is reachable.');
+    return {
+      id: queuedId,
+      senderId: this.identity!.id,
+      receiverId: peerId,
+      type: 'text',
+      content: text,
+      iv: '',
+      timestamp: Date.now(),
+      expiresAt: options.ephemeral ? Date.now() + 60000 : undefined,
+    };
+  }
+
+  async flushOutboxForPeer(peerId: string) {
+    const entries = listOutboxForPeer(this.messageOutbox, peerId);
+    for (const entry of entries) {
+      if (!this.getPeerTransportStatus(peerId).usable) break;
+      const sent = await this.sendMessage(peerId, entry.text, {
+        ephemeral: entry.ephemeral,
+        messageId: entry.id,
+        skipOutbox: true,
+      });
+      if (sent) {
+        this.messageOutbox = removeOutbox(this.messageOutbox, entry.id);
+      } else {
+        break;
+      }
+    }
   }
 
   async sendFile(peerId: string, file: File) {
