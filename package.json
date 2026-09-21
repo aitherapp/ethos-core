@@ -1,7 +1,7 @@
 {
   "name": "E T H O S",
   "private": true,
-  "version": "3.2.7",
+  "version": "3.2.8",
   "type": "module",
   "overrides": {
     "postcss": "8.5.23"

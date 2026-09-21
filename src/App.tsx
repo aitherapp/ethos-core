@@ -120,6 +120,17 @@ const ABOUT_CHANGELOG = [
     ],
   },
   {
+    version: '3.2.8',
+    title: 'Mobile Soft Resume & Discreet Wake',
+    date: '2026-09-21',
+    changes: [
+      'Background wake pushes say “Incoming connection…” instead of claiming a delivered “New message”.',
+      'Foregrounding the app (or receiving a push while a client is open) soft-resumes relay sockets without tapping RECONNECT.',
+      'Failed wake-and-send queues the message on the sender until the peer is reachable; handshakes are throttled to avoid private-relay rate limits.',
+      'Bumped the app and service-worker cache version for this release.',
+    ],
+  },
+  {
     version: '3.2.6',
     title: 'Opt-in BYO Private Relay',
     date: '2026-09-20',
