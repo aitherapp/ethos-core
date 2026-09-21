@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ethos-v3.2.7'; // Increment for cache busting
+const CACHE_NAME = 'ethos-v3.2.8'; // Increment for cache busting
 const DEEP_LINK_STASH_CACHE = 'ethos-deeplink-v1';
 const DEEP_LINK_STASH_URL = './__ethos_pending_deeplink';
 const ASSETS = [
@@ -145,6 +145,12 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'ETHOS', options)
+    (async () => {
+      await self.registration.showNotification(data.title || 'ETHOS', options);
+      const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of all) {
+        client.postMessage({ type: 'ethos_push_wake' });
+      }
+    })()
   );
 });

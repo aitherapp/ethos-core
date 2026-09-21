@@ -55,6 +55,7 @@ import {
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
 import {
+  ETHOS_PUSH_WAKE,
   buildNotificationData,
   isWakePlaceholderMessageId,
   parseChatDeepLink,
@@ -1274,7 +1275,11 @@ export default function App() {
     };
 
     const onSwMessage = (event: MessageEvent) => {
-      if (event.data?.type !== 'ethos_notification_open') return;
+      const type = event.data?.type;
+      if (type === 'ethos_notification_open' || type === ETHOS_PUSH_WAKE) {
+        void iroh.resumeSignaling();
+      }
+      if (type !== 'ethos_notification_open') return;
       const resolved = resolveNotificationDeepLink(
         event.data as { peerId?: string; messageId?: string; url?: string }
       );
@@ -1286,7 +1291,14 @@ export default function App() {
     };
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') tryConsumeStash();
+      if (document.visibilityState === 'visible') {
+        void iroh.resumeSignaling();
+        tryConsumeStash();
+      }
+    };
+
+    const onPageShow = () => {
+      void iroh.resumeSignaling();
     };
 
     // iOS home-screen launches often ignore openWindow and use manifest start_url (#app).
@@ -1295,11 +1307,13 @@ export default function App() {
 
     window.addEventListener('hashchange', fromHash);
     window.addEventListener('focus', tryConsumeStash);
+    window.addEventListener('pageshow', onPageShow);
     document.addEventListener('visibilitychange', onVisible);
     navigator.serviceWorker?.addEventListener('message', onSwMessage);
     return () => {
       window.removeEventListener('hashchange', fromHash);
       window.removeEventListener('focus', tryConsumeStash);
+      window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisible);
       navigator.serviceWorker?.removeEventListener('message', onSwMessage);
     };

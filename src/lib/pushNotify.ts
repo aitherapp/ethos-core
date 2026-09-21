@@ -1,5 +1,8 @@
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
 
+/** SW → client message type when a push arrives (soft-resume wake). */
+export const ETHOS_PUSH_WAKE = 'ethos_push_wake';
+
 export function formatWakePushNotification(): { title: string; body: string } {
   return { title: 'ETHOS', body: 'Incoming connection…' };
 }

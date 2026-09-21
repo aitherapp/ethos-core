@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ETHOS_PUSH_WAKE,
   formatPushNotification,
   formatWakePushNotification,
   shouldSendRemotePush,
@@ -9,6 +10,10 @@ import {
 } from '../src/lib/pushNotify';
 
 describe('pushNotify', () => {
+  it('ETHOS_PUSH_WAKE is the client wake message type', () => {
+    expect(ETHOS_PUSH_WAKE).toBe('ethos_push_wake');
+  });
+
   it('formatWakePushNotification returns discreet wake copy', () => {
     expect(formatWakePushNotification()).toEqual({
       title: 'ETHOS',
