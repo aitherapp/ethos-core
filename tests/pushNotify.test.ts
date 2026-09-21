@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatPushNotification,
+  formatWakePushNotification,
   shouldSendRemotePush,
   buildNotificationData,
   resolveNotificationDeepLink,
@@ -8,6 +9,13 @@ import {
 } from '../src/lib/pushNotify';
 
 describe('pushNotify', () => {
+  it('formatWakePushNotification returns discreet wake copy', () => {
+    expect(formatWakePushNotification()).toEqual({
+      title: 'ETHOS',
+      body: 'Incoming connection…',
+    });
+  });
+
   it('formats Minimal / Sender / Preview', () => {
     expect(formatPushNotification('Minimal', 'Alice', 'hello world')).toEqual({
       title: 'ETHOS',

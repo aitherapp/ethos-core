@@ -178,4 +178,27 @@ describe('notifyPeerViaGateway', () => {
     expect(ok).toBe(true);
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
+
+  it('uses wake notification copy when purpose is wake', async () => {
+    const fetchFn = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+
+    const ok = await notifyPeerViaGateway(profile({ pushContentMode: 'Preview' }), {
+      senderName: 'Alice',
+      previewText: 'secret preview text',
+      localPeerId: 'local-peer',
+      messageId: 'peer-wake-123',
+      directConnected: false,
+      relayConnected: false,
+      purpose: 'wake',
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    expect(ok).toBe(true);
+    const body = JSON.parse(
+      ((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1] as RequestInit)
+        .body as string
+    );
+    expect(body.notification.title).toBe('ETHOS');
+    expect(body.notification.body).toBe('Incoming connection…');
+  });
 });

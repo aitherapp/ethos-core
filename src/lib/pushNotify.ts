@@ -1,5 +1,9 @@
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
 
+export function formatWakePushNotification(): { title: string; body: string } {
+  return { title: 'ETHOS', body: 'Incoming connection…' };
+}
+
 export function formatPushNotification(
   mode: PushContentMode,
   senderName: string,
