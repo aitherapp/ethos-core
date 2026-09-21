@@ -111,11 +111,12 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
-    version: '3.2.7',
-    title: 'Settings Docs Links',
-    date: '2026-09-20',
+    version: '3.2.9',
+    title: 'About Soft-Resume Notes',
+    date: '2026-09-21',
     changes: [
-      'Settings help links for push gateway and private relay now open the GitHub source folders instead of broken Pages paths.',
+      'What Changed Recently now lists Mobile Soft Resume & Discreet Wake first, so the latest work is visible at the top of About.',
+      'Reliability Notes describe soft resume on foreground, discreet “Incoming connection…” wake pushes, and sender-side message queuing.',
       'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
     ],
   },
@@ -135,7 +136,7 @@ const ABOUT_CHANGELOG = [
     title: 'Settings Docs Links',
     date: '2026-09-20',
     changes: [
-      'Settings help for push gateway and private relay links to the GitHub push-gateway/ and relay/ folders.',
+      'Settings help links for push gateway and private relay now open the GitHub source folders instead of broken Pages paths.',
       'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
     ],
   },
@@ -2902,9 +2903,10 @@ export default function App() {
                 <section>
                   <h3 className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-2">Reliability Notes</h3>
                   <p>
-                    Mobile browsers can pause tabs in the background, and some networks block direct WebRTC paths.
-                    For best results, keep ETHOS open and foregrounded while connecting or transferring files. If a peer is offline
-                    or their browser is sleeping, ETHOS will wait instead of spamming relays.
+                    Mobile browsers can pause tabs in the background and drop WebSocket relay connections quickly.
+                    Opening ETHOS again (or tapping a wake notification) soft-resumes signaling without a full RECONNECT.
+                    If a peer is asleep, ETHOS sends a discreet “Incoming connection…” wake push, queues the message on the sender,
+                    and delivers it when the peer comes back — without flooding private relays.
                   </p>
                 </section>
 
