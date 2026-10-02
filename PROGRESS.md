@@ -17,7 +17,7 @@ Users could not establish secure WebRTC tunnels between peers. The root causes w
 4. **Stale per-peer crypto state** — reconnection left old secrets/ratchets in memory
 5. **Dead webOfTrust code** — `verifyNIP26Event()` was a no-op (empty Set) but added latency to every incoming signal
 
-This report now covers the current public codebase. For the forward-looking task list, see `docs/plans/2026-06-11-reliable-peer-transport.md`.
+This report now covers the current public codebase. Forward-looking design notes live in the local-only `docs/` tree (not published to GitHub).
 
 Latest staging polish: the right-rail Network Metrics panel now uses real app diagnostics instead of decorative document-sync text, scrolls on mobile, and the mobile hamburger menu has a foregrounded, more opaque dropdown with larger click targets that stay tappable while Network / Metrics is open. The chat header now shows the secure transport mode only once, uses short labels on very small screens, and keeps the quantum-safe status icon-only there to avoid collisions.
 

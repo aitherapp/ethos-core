@@ -21,6 +21,38 @@ import { normalizeGroupMembers } from './groups';
 import { IndexedDbMessageHistoryStore, loadEncryptedGroups, loadEncryptedPeerMetadata, PeerMetadata, saveEncryptedGroups, saveEncryptedPeerMetadata } from './messageHistory';
 import { notifyPeerViaGateway } from './peerPush';
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
+import {
+  enqueueOutbox,
+  listOutboxForPeer,
+  removeOutbox,
+  type OutboxEntry,
+} from './messageOutbox';
+import { planPeerSendAction } from './peerSendPlan';
+import {
+  buildPrivateRelayHandshakeFields,
+  parseNostrSubscriptionKey,
+  parsePrivateRelayHandoff,
+  relaysRemovedFromList,
+  relayUpdateMode,
+  subscriptionKeysToClearForRebind,
+  type PrivateRelayHandoffFields,
+  type SetRelaysOpts,
+} from './privateRelayHandoff';
+import {
+  loadPrivateRelaySettings,
+  savePrivateRelaySettings,
+} from './privateRelaySettings';
+import {
+  attemptPrivateRelayFromHandoff,
+  attemptPrivateRelayFromSettings,
+  clearedPrivateRelaySettings,
+  mergeSignalHandshakeFields,
+} from './privateRelayWiring';
+import {
+  HANDSHAKE_BACKOFF_AFTER_RATE_LIMIT_MS,
+  shouldResumeSignaling,
+  shouldSendHandshakeNow,
+} from './signalingResume';
 
 export interface PeerPushProfile {
   pushGatewayUrl: string | null;
@@ -185,19 +217,34 @@ export function canSendFileOverTransport({
   return { ok: true };
 }
 
+/** Relay "connected" without recent inbound peer activity is treated as a zombie. */
+export const PEER_RELAY_LIVE_MS = 45_000;
+
+export function isPeerActivityFresh(
+  lastActivityAt: number | undefined,
+  now: number,
+  maxAgeMs: number = PEER_RELAY_LIVE_MS
+): boolean {
+  if (lastActivityAt === undefined) return false;
+  return now - lastActivityAt <= maxAgeMs;
+}
+
 export function getProductTransportStatus({
   directConnected,
   relayConnected,
   handshakeComplete,
   failed = false,
+  peerLive = true,
 }: {
   directConnected: boolean;
   relayConnected: boolean;
   handshakeComplete: boolean;
   failed?: boolean;
+  /** False when relay looks connected but the peer has been silent (likely asleep). */
+  peerLive?: boolean;
 }): { mode: RelayTransportMode; label: string; usable: boolean } {
   if (directConnected && handshakeComplete) return { mode: 'direct', label: 'Secure direct tunnel', usable: true };
-  if (relayConnected && handshakeComplete) return { mode: 'relay', label: 'Secure relay mode', usable: true };
+  if (relayConnected && handshakeComplete && peerLive) return { mode: 'relay', label: 'Secure relay mode', usable: true };
   if (failed) return { mode: 'unavailable', label: 'Peer unavailable', usable: false };
   return { mode: 'connecting', label: 'Connecting securely', usable: false };
 }
@@ -425,6 +472,28 @@ export function shouldProcessWebRtcOffer(relayStatus: RelayConnectionStatus | un
   return relayStatus !== 'connected';
 }
 
+/**
+ * When we connect to peer X we also subscribe to X's Nostr topic (to exchange
+ * signaling). Widget visitors publish offers on the owner's topic too — those
+ * third-party signals must not be treated as inbound connection attempts to us.
+ * On a foreign topic, only accept signals from the topic owner.
+ */
+export function shouldProcessMeshSignalOnTopic({
+  topicId,
+  currentPeerId,
+  senderId,
+}: {
+  topicId: string;
+  currentPeerId: string | null | undefined;
+  senderId: string;
+}) {
+  if (!currentPeerId) return false;
+  if (topicId === currentPeerId) return true;
+  // Own relay-data topic is `${currentPeerId}:data`
+  if (topicId === buildRelayDataTopic(currentPeerId)) return true;
+  return senderId === topicId;
+}
+
 export function shouldStartConnectionAttempt(lastAttemptAt: number | undefined, now: number, cooldownMs: number) {
   return lastAttemptAt === undefined || now - lastAttemptAt >= cooldownMs;
 }
@@ -502,6 +571,8 @@ export class IrohManager {
   private pushContentMode: PushContentMode = 'Sender';
   private pushTriggerMode: PushTriggerMode = 'Background only';
   private peerPushProfiles: Map<string, PeerPushProfile> = new Map();
+  private peerPrivateRelayHandoffs: Map<string, PrivateRelayHandoffFields> = new Map();
+  private privateRelayAttempted: Set<string> = new Set();
 
   setPushSubscription(subscription: PushSubscription | null) {
     this.pushSubscription = subscription;
@@ -538,6 +609,33 @@ export class IrohManager {
     return this.peerPushProfiles.get(peerId) || null;
   }
 
+  /**
+   * Re-advertise the current push subscription/gateway prefs to peers we already
+   * know, so a refreshed endpoint after SW update is not stuck on the sender.
+   */
+  rebroadcastPushProfile() {
+    if (!this.currentPeerId || !this.identity) return;
+    const fields = this.handshakeControlFields();
+    if (!Object.keys(fields).length) return;
+
+    const peerIds = new Set<string>([
+      ...this.peerPushProfiles.keys(),
+      ...this.peerPrivateRelayHandoffs.keys(),
+      ...this.connections.keys(),
+      ...this.relayStatus.keys(),
+      ...this.handshakeStatus.keys(),
+    ]);
+
+    for (const peerId of peerIds) {
+      if (peerId === this.currentPeerId) continue;
+      this.sendNostrSignal(peerId, {
+        senderId: this.currentPeerId,
+        type: 'push-profile',
+        ...fields,
+      });
+    }
+  }
+
   private pushHandshakeFields(): Record<string, unknown> {
     if (!this.pushGatewayUrl || !this.pushAuthToken || !this.pushSubscription) {
       return {};
@@ -550,6 +648,18 @@ export class IrohManager {
       pushContentMode: this.pushContentMode,
       pushTriggerMode: this.pushTriggerMode,
     };
+  }
+
+  private privateRelayHandshakeFields(): Record<string, string> {
+    return buildPrivateRelayHandshakeFields(loadPrivateRelaySettings());
+  }
+
+  /** Push prefs + private relay credentials for helo / helo-ack / push-profile. */
+  private handshakeControlFields(): Record<string, unknown> {
+    return mergeSignalHandshakeFields(
+      this.pushHandshakeFields(),
+      this.privateRelayHandshakeFields()
+    );
   }
 
   private storePeerPushFromSignal(peerId: string, signal: {
@@ -586,6 +696,116 @@ export class IrohManager {
     }
   }
 
+  private privateRelayAttemptKey(handoff: PrivateRelayHandoffFields): string {
+    return `${handoff.relayUrl}\0${handoff.relayAuthToken}`;
+  }
+
+  private storePeerPrivateRelayFromSignal(
+    peerId: string,
+    signal: Record<string, unknown>
+  ) {
+    const handoff = parsePrivateRelayHandoff(signal);
+    if (!handoff) return;
+    this.peerPrivateRelayHandoffs.set(peerId, handoff);
+    const key = this.privateRelayAttemptKey(handoff);
+    if (this.privateRelayAttempted.has(key)) return;
+    this.privateRelayAttempted.add(key);
+    void this.runPrivateRelayAttempt(handoff);
+  }
+
+  private async probePrivateRelayConnect(authedUrl: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws: WebSocket | undefined;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+        resolve(ok);
+      };
+      try {
+        ws = new WebSocket(authedUrl);
+      } catch {
+        resolve(false);
+        return;
+      }
+      const timer = window.setTimeout(() => finish(false), 8000);
+      ws.onopen = () => finish(true);
+      ws.onerror = () => finish(false);
+      ws.onclose = () => finish(false);
+    });
+  }
+
+  private async runPrivateRelayAttempt(
+    handoff: PrivateRelayHandoffFields
+  ): Promise<boolean> {
+    return attemptPrivateRelayFromHandoff(handoff, {
+      setRelays: (relays, opts) => this.setRelays(relays, opts),
+      notifyStatus: (type, message) => this.notifyStatus(type, message),
+      probeConnect: (url) => this.probePrivateRelayConnect(url),
+    });
+  }
+
+  /**
+   * Owner Settings apply: probe then dual-homed pool (defaults + private).
+   * Marks `ready` only on success so handshake fields are not advertised early.
+   */
+  async applyPrivateRelayFromSettings(): Promise<boolean> {
+    const settings = loadPrivateRelaySettings();
+    if (settings.relayUrl && settings.authToken) {
+      this.privateRelayAttempted.delete(
+        this.privateRelayAttemptKey({
+          relayUrl: settings.relayUrl,
+          relayAuthToken: settings.authToken,
+        })
+      );
+    }
+    const ok = await attemptPrivateRelayFromSettings(settings, {
+      setRelays: (relays, opts) => this.setRelays(relays, opts),
+      notifyStatus: (type, message) => this.notifyStatus(type, message),
+      probeConnect: (url) => this.probePrivateRelayConnect(url),
+      defaultRelays: DEFAULT_NOSTR_RELAYS,
+    });
+    if (ok) {
+      savePrivateRelaySettings({ ...settings, enabled: true, ready: true });
+      this.rebroadcastPushProfile();
+    } else {
+      savePrivateRelaySettings({ ...settings, enabled: false, ready: false });
+    }
+    return ok;
+  }
+
+  /** Disable private relay and restore public default pool (no token URL left active). */
+  clearPrivateRelayPool(opts?: SetRelaysOpts) {
+    const settings = loadPrivateRelaySettings();
+    savePrivateRelaySettings({
+      ...settings,
+      enabled: false,
+      ready: false,
+    });
+    this.restoreDefaultRelays(opts ?? { soft: true });
+  }
+
+  /**
+   * Manual one-shot retry from a stored peer handoff (or owner settings). No timers / auto-retry.
+   */
+  async retryPrivateRelayHandoff(peerId?: string): Promise<boolean> {
+    const handoff = peerId
+      ? this.peerPrivateRelayHandoffs.get(peerId)
+      : this.peerPrivateRelayHandoffs.values().next().value;
+    if (handoff) {
+      this.privateRelayAttempted.delete(this.privateRelayAttemptKey(handoff));
+      this.privateRelayAttempted.add(this.privateRelayAttemptKey(handoff));
+      return this.runPrivateRelayAttempt(handoff);
+    }
+    return this.applyPrivateRelayFromSettings();
+  }
+
   private pushEndpoint: string | null = null;
   private peerPushEndpoints: Map<string, string> = new Map();
   private peerMetadataStore = new IndexedDbMessageHistoryStore();
@@ -610,6 +830,11 @@ export class IrohManager {
   private relayHealth: Map<string, SignalRelayHealth> = new Map();
   private connectionAttemptStartedAt: Map<string, number> = new Map();
   private noResponseTimers: Map<string, number> = new Map();
+  private lastResumeAt: number | undefined;
+  private lastHandshakeAt: Map<string, number> = new Map();
+  private handshakeBackoffUntil: Map<string, number> = new Map();
+  private globalHandshakeBackoffUntil: number | undefined;
+  private messageOutbox: OutboxEntry[] = [];
 
   private static readonly SIGNAL_MAX_AGE_SEC = 300;
   private static readonly DISCOVERY_ANNOUNCEMENT_MAX_AGE_MS = IrohManager.SIGNAL_MAX_AGE_SEC * 1000;
@@ -781,6 +1006,16 @@ export class IrohManager {
               const signal = JSON.parse(decrypted);
 
               if (signal.senderId === this.currentPeerId) return;
+              if (!shouldProcessMeshSignalOnTopic({
+                topicId,
+                currentPeerId: this.currentPeerId,
+                senderId: signal.senderId,
+              })) {
+                console.debug(
+                  `[Nostr] Ignoring third-party ${signal.type} from ${signal.senderId.slice(0, 8)} on topic ${topicId.slice(0, 8)}`
+                );
+                return;
+              }
               this.recordPeerResponse(signal.senderId);
               const sessionLabel = signal.sessionId ? ` session=${signal.sessionId.slice(0, 8)}` : ' legacy-session';
               console.debug(`[Nostr] Mesh IN: ${signal.type} from ${signal.senderId.slice(0, 8)}${sessionLabel}`);
@@ -802,6 +1037,9 @@ export class IrohManager {
                  this.handleRelayHelloAck(signal.senderId, signal);
                } else if (signal.type === 'relay-confirm') {
                  this.handleRelayConfirm(signal.senderId, signal);
+               } else if (signal.type === 'push-profile') {
+                 this.storePeerPushFromSignal(signal.senderId, signal);
+                 this.storePeerPrivateRelayFromSignal(signal.senderId, signal);
                } else if (signal.type === 'relay-message') {
                  // Legacy relay data path kept for older builds during rollout.
                  this.handleRelayMessage(signal.senderId, signal);
@@ -904,13 +1142,46 @@ export class IrohManager {
     this.notifyStatus('error', message);
   }
 
+  private lastPeerActivityAt: Map<string, number> = new Map();
+
   private recordPeerResponse(peerId: string) {
+    this.lastPeerActivityAt.set(peerId, Date.now());
     this.connectionAttemptStartedAt.delete(peerId);
     const timeoutId = this.noResponseTimers.get(peerId);
     if (timeoutId !== undefined) {
       window.clearTimeout(timeoutId);
       this.noResponseTimers.delete(peerId);
     }
+    void this.flushOutboxForPeer(peerId).catch(() => {});
+  }
+
+  private isPeerLive(peerId: string, now = Date.now()) {
+    return isPeerActivityFresh(this.lastPeerActivityAt.get(peerId), now);
+  }
+
+  /**
+   * Drop local relay/session state that can look "connected" while the peer is
+   * asleep. Call before wake-then-retry so ciphertext uses a fresh handshake.
+   */
+  invalidatePeerSession(peerId: string) {
+    const existingConn = this.connections.get(peerId);
+    if (existingConn) {
+      try { existingConn.destroy(); } catch (e) {}
+      this.connections.delete(peerId);
+    }
+    this.pendingSignals.delete(peerId);
+    this.secrets.delete(peerId);
+    this.ratchetStates.delete(peerId);
+    this.handshakeStatus.delete(peerId);
+    this.relaySessions.delete(peerId);
+    this.establishedRelaySessions.delete(peerId);
+    this.relayStatus.delete(peerId);
+    this.relayConfirmed.delete(peerId);
+    this.relayHelloAcks.delete(peerId);
+    this.signalSessions.delete(peerId);
+    this.lastPeerActivityAt.delete(peerId);
+    this.connectionStatus.delete(peerId);
+    this.connectionAttemptStartedAt.delete(peerId);
   }
 
   private scheduleNoResponseWarning(peerId: string, startedAt: number) {
@@ -933,12 +1204,26 @@ export class IrohManager {
   private ensureRelayHandshake(peerId: string) {
     const existingRelayStatus = this.relayStatus.get(peerId);
     if (!this.currentPeerId || !this.identity || existingRelayStatus === 'connected') return;
-    if (existingRelayStatus === 'connecting' && this.relaySessions.has(peerId)) return;
+
+    const now = Date.now();
+    if (
+      !shouldSendHandshakeNow(
+        this.lastHandshakeAt.get(peerId),
+        now,
+        2000,
+        this.handshakeBackoffUntil.get(peerId) ?? this.globalHandshakeBackoffUntil,
+      )
+    ) {
+      return;
+    }
 
     const role = getDeterministicRelayRole(this.currentPeerId, peerId);
     this.relayStatus.set(peerId, 'connecting');
+    this.lastHandshakeAt.set(peerId, now);
 
     if (role === 'initiator') {
+      // Re-publish hello on throttle ticks while still "connecting" so a sleeping
+      // peer can catch a later attempt after wake (do not stick on the first publish).
       const sessionId = this.relaySessions.get(peerId) || uuidv4();
       this.relaySessions.set(peerId, sessionId);
       this.sendNostrSignal(peerId, {
@@ -948,7 +1233,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcPublicKey: this.identity.pqcPublicKey,
         displayName: this.identity.displayName,
-        ...this.pushHandshakeFields(),
+        ...this.handshakeControlFields(),
       });
       return;
     }
@@ -974,7 +1259,7 @@ export class IrohManager {
       classicalPublicKey: this.identity.classicalPublicKey,
       pqcPublicKey: this.identity.pqcPublicKey,
       displayName: this.identity.displayName,
-      ...this.pushHandshakeFields(),
+      ...this.handshakeControlFields(),
     });
   }
 
@@ -1014,6 +1299,7 @@ export class IrohManager {
       }
 
       this.storePeerPushFromSignal(peerId, signal);
+      this.storePeerPrivateRelayFromSignal(peerId, signal);
 
       const ack = {
         senderId: this.currentPeerId,
@@ -1022,7 +1308,7 @@ export class IrohManager {
         classicalPublicKey: this.identity.classicalPublicKey,
         pqcCiphertext: ciphertext,
         displayName: this.identity.displayName,
-        ...this.pushHandshakeFields(),
+        ...this.handshakeControlFields(),
       };
       this.relayHelloAcks.set(peerId, ack);
       this.sendNostrSignal(peerId, ack);
@@ -1068,6 +1354,7 @@ export class IrohManager {
       }
 
       this.storePeerPushFromSignal(peerId, signal);
+      this.storePeerPrivateRelayFromSignal(peerId, signal);
 
       this.sendNostrSignal(peerId, {
         senderId: this.currentPeerId,
@@ -1231,10 +1518,33 @@ export class IrohManager {
           if (msg.includes('rate-limited') || msg.includes('Policy violated') || msg.includes('timed out')) {
             this.relayHealth.set(url, { status: 'unhealthy', lastCheck: Date.now() });
           }
+          if (msg.includes('rate-limited')) {
+            this.applyHandshakeRateLimitBackoff(topicId);
+          }
         });
       });
     });
    }
+
+  private applyHandshakeRateLimitBackoff(topicId: string) {
+    const backoffUntil = Date.now() + HANDSHAKE_BACKOFF_AFTER_RATE_LIMIT_MS;
+    const peerId = topicId.endsWith(RELAY_DATA_TOPIC_SUFFIX)
+      ? topicId.slice(0, -RELAY_DATA_TOPIC_SUFFIX.length)
+      : topicId;
+    const knownPeer =
+      this.relayStatus.has(peerId) ||
+      this.handshakeStatus.has(peerId) ||
+      this.lastHandshakeAt.has(peerId) ||
+      this.connections.has(peerId) ||
+      this.peerPushProfiles.has(peerId) ||
+      this.peerPks.has(peerId) ||
+      topicId.endsWith(RELAY_DATA_TOPIC_SUFFIX);
+    if (knownPeer) {
+      this.handshakeBackoffUntil.set(peerId, backoffUntil);
+      return;
+    }
+    this.globalHandshakeBackoffUntil = backoffUntil;
+  }
 
   private async sendNostrSignal(topicId: string, payload: any) {
     return this.sendNostrEvent(topicId, payload, SIGNAL_KIND);
@@ -1782,6 +2092,46 @@ export class IrohManager {
      return null;
     }
 
+  /**
+   * Soft resume: re-open relay sockets and rebind topic subscriptions without
+   * wiping secrets, ratchet, relaySessions, or WebRTC connections.
+   * Throttled to at most once per 3s.
+   */
+  async resumeSignaling(): Promise<boolean> {
+    if (!shouldResumeSignaling(this.lastResumeAt, Date.now())) {
+      return false;
+    }
+
+    const previousRelays = [...NOSTR_RELAYS];
+    await Promise.all(
+      NOSTR_RELAYS.map(async (url) => {
+        try {
+          await (this.nostrPool as any).ensureRelay(url);
+        } catch {
+          /* ignore */
+        }
+      }),
+    );
+
+    this.rebindNostrSubscriptions(previousRelays);
+    this.lastResumeAt = Date.now();
+
+    // Nudge known contacts so a waiting sender can complete handshake / flush outbox.
+    const knownPeers = new Set<string>([
+      ...this.peerMetadata.keys(),
+      ...this.peerPushProfiles.keys(),
+      ...this.handshakeStatus.keys(),
+      ...this.lastPeerActivityAt.keys(),
+    ]);
+    for (const peerId of knownPeers) {
+      if (peerId === this.currentPeerId) continue;
+      this.ensureRelayHandshake(peerId);
+      void this.flushOutboxForPeer(peerId).catch(() => {});
+    }
+
+    return true;
+  }
+
   async reconnect() {
     // Destroy all existing peer connections
     this.connections.forEach((peer, id) => {
@@ -2189,36 +2539,152 @@ export class IrohManager {
     return { id: msgId, senderId: this.identity!.id, receiverId: groupId, groupId, type: 'text' as const, content: text, iv: '', timestamp, expiresAt };
   }
 
-  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean } = {}) {
-    const conn = this.connections.get(peerId);
-    const ratchetState = this.ratchetStates.get(peerId);
-    if (!ratchetState) {
+  async sendMessage(peerId: string, text: string, options: { ephemeral?: boolean; skipPush?: boolean; messageId?: string; skipOutbox?: boolean } = {}) {
+    const attempt = async (): Promise<SecureMessage | null> => {
+      const conn = this.connections.get(peerId);
+      const ratchetState = this.ratchetStates.get(peerId);
+      const relayLive = this.relayStatus.get(peerId) === 'connected' && this.isPeerLive(peerId);
+      if (!ratchetState) {
+        this.ensureRelayHandshake(peerId);
+        return null;
+      }
+
+      // Stale local relay must not encrypt/send — keys belong to a zombie session.
+      if (!conn?.connected && this.relayStatus.get(peerId) === 'connected' && !relayLive) {
+        return null;
+      }
+
+      const { ciphertext, iv, state } = await ratchetEncrypt(ratchetState, text);
+      this.ratchetStates.set(peerId, state);
+
+      const msg: SecureMessage = {
+        id: options.messageId || uuidv4(),
+        senderId: this.identity!.id,
+        receiverId: peerId,
+        type: 'text',
+        content: ciphertext,
+        iv,
+        timestamp: Date.now(),
+        expiresAt: options.ephemeral ? Date.now() + 60000 : undefined,
+      };
+      let delivered = false;
+      if (conn?.connected) {
+        conn.send(JSON.stringify({ ...msg, encrypted: true }));
+        delivered = true;
+      } else if (relayLive) {
+        await this.sendRelayData(peerId, { ...msg, encrypted: true });
+        delivered = true;
+      } else {
+        this.ensureRelayHandshake(peerId);
+        return null;
+      }
+      if (delivered && !options.skipPush) {
+        const peerProfile = this.getPeerPushProfile(peerId);
+        notifyPeerViaGateway(peerProfile, {
+          senderName: this.identity?.displayName || 'ETHOS Peer',
+          previewText: text,
+          localPeerId: this.identity!.id,
+          messageId: msg.id,
+          directConnected: Boolean(conn?.connected),
+          relayConnected: this.relayStatus.get(peerId) === 'connected',
+          purpose: 'delivery',
+        }).catch(() => {});
+      }
+      return { ...msg, content: text };
+    };
+
+    let sent = await attempt();
+    if (sent) return sent;
+
+    // Widget owns wake/retry via deliverWidgetOutbound (skipPush).
+    if (options.skipPush) {
+      if (this.relayStatus.get(peerId) === 'connected' && !this.isPeerLive(peerId)) {
+        this.invalidatePeerSession(peerId);
+      }
       this.ensureRelayHandshake(peerId);
       return null;
     }
-    
-    const { ciphertext, iv, state } = await ratchetEncrypt(ratchetState, text);
-    this.ratchetStates.set(peerId, state);
-    
-    const msg: SecureMessage = { id: uuidv4(), senderId: this.identity!.id, receiverId: peerId, type: 'text', content: ciphertext, iv, timestamp: Date.now(), expiresAt: options.ephemeral ? Date.now() + 60000 : undefined };
+
+    if (options.skipOutbox) {
+      this.ensureRelayHandshake(peerId);
+      return null;
+    }
+
+    if (this.relayStatus.get(peerId) === 'connected' && !this.isPeerLive(peerId)) {
+      this.invalidatePeerSession(peerId);
+    }
+
     const peerProfile = this.getPeerPushProfile(peerId);
-    notifyPeerViaGateway(peerProfile, {
-      senderName: this.identity?.displayName || 'ETHOS Peer',
-      previewText: text,
-      localPeerId: this.identity!.id,
-      messageId: msg.id,
-      directConnected: Boolean(conn?.connected),
-      relayConnected: this.relayStatus.get(peerId) === 'connected',
-    }).catch(() => {});
-    if (conn?.connected) {
-      conn.send(JSON.stringify({ ...msg, encrypted: true }));
-    } else if (this.relayStatus.get(peerId) === 'connected') {
-      await this.sendRelayData(peerId, { ...msg, encrypted: true });
+    const plan = planPeerSendAction({
+      transportUsable: this.getPeerTransportStatus(peerId).usable,
+      hasPushProfile: Boolean(peerProfile),
+    });
+
+    if (plan.action === 'wake-and-wait' && peerProfile) {
+      this.ensureRelayHandshake(peerId);
+      notifyPeerViaGateway(peerProfile, {
+        senderName: this.identity?.displayName || 'ETHOS Peer',
+        previewText: text,
+        localPeerId: this.identity!.id,
+        messageId: `peer-wake-${Date.now()}`,
+        directConnected: false,
+        relayConnected: false,
+        purpose: 'wake',
+      }).catch(() => {});
+
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if (this.getPeerTransportStatus(peerId).usable) {
+          sent = await attempt();
+          if (sent) return sent;
+        }
+        this.ensureRelayHandshake(peerId);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } else if (plan.action === 'send-now') {
+      this.ensureRelayHandshake(peerId);
+      sent = await attempt();
+      if (sent) return sent;
     } else {
       this.ensureRelayHandshake(peerId);
-      return null;
     }
-    return { ...msg, content: text };
+
+    const queuedId = options.messageId || uuidv4();
+    this.messageOutbox = enqueueOutbox(this.messageOutbox, {
+      id: queuedId,
+      peerId,
+      text,
+      ephemeral: options.ephemeral,
+      createdAt: Date.now(),
+    });
+    this.notifyStatus('info', 'Message queued — will send when the peer is reachable.');
+    return {
+      id: queuedId,
+      senderId: this.identity!.id,
+      receiverId: peerId,
+      type: 'text',
+      content: text,
+      iv: '',
+      timestamp: Date.now(),
+      expiresAt: options.ephemeral ? Date.now() + 60000 : undefined,
+    };
+  }
+
+  async flushOutboxForPeer(peerId: string) {
+    const entries = listOutboxForPeer(this.messageOutbox, peerId);
+    for (const entry of entries) {
+      if (!this.getPeerTransportStatus(peerId).usable) break;
+      const sent = await this.sendMessage(peerId, entry.text, {
+        ephemeral: entry.ephemeral,
+        messageId: entry.id,
+        skipOutbox: true,
+      });
+      if (sent) {
+        this.messageOutbox = removeOutbox(this.messageOutbox, entry.id);
+      } else {
+        break;
+      }
+    }
   }
 
   async sendFile(peerId: string, file: File) {
@@ -2356,6 +2822,68 @@ export class IrohManager {
 
   onMessage(callback: (msg: SecureMessage) => void) { this.onMessageCallback = callback; }
   getIdentity() { return this.identity; }
+
+  /** Drop local connection state so a removed contact cannot reappear via visibility polling.
+   *  Keep display names so the user can re-add visitors by Visitor #xxxx / #xxxx. */
+  forgetPeer(peerId: string) {
+    const existingName = this.peerMetadata.get(peerId)?.displayName;
+    if (existingName) {
+      try {
+        const raw = localStorage.getItem('nexus_peer_labels');
+        const labels = raw ? JSON.parse(raw) as Record<string, string> : {};
+        labels[peerId] = existingName;
+        localStorage.setItem('nexus_peer_labels', JSON.stringify(labels));
+      } catch {}
+    }
+    const conn = this.connections.get(peerId);
+    if (conn) {
+      try { conn.destroy(); } catch {}
+    }
+    this.connections.delete(peerId);
+    this.pendingSignals.delete(peerId);
+    this.secrets.delete(peerId);
+    this.ratchetStates.delete(peerId);
+    this.handshakeStatus.delete(peerId);
+    this.peerPks.delete(peerId);
+    this.connectionStatus.delete(peerId);
+    this.connectionAttemptStartedAt.delete(peerId);
+    this.signalSessions.delete(peerId);
+    this.relaySessions.delete(peerId);
+    this.establishedRelaySessions.delete(peerId);
+    this.relayStatus.delete(peerId);
+    this.relayConfirmed.delete(peerId);
+    this.relayHelloAcks.delete(peerId);
+    this.iceReconnectRetries.delete(peerId);
+    this.retryingPeers.delete(peerId);
+    const noResponseTimer = this.noResponseTimers.get(peerId);
+    if (noResponseTimer !== undefined) {
+      window.clearTimeout(noResponseTimer);
+      this.noResponseTimers.delete(peerId);
+    }
+  }
+
+  listPeerDisplayEntries(): Array<{ peerId: string; displayName: string }> {
+    const fromMemory = Array.from(this.peerMetadata.entries())
+      .filter(([, meta]) => !!meta?.displayName)
+      .map(([peerId, meta]) => ({ peerId, displayName: meta.displayName }));
+
+    let fromStorage: Array<{ peerId: string; displayName: string }> = [];
+    try {
+      const raw = localStorage.getItem('nexus_peer_labels');
+      if (raw) {
+        fromStorage = Object.entries(JSON.parse(raw) as Record<string, string>)
+          .filter(([, displayName]) => !!displayName)
+          .map(([peerId, displayName]) => ({ peerId, displayName }));
+      }
+    } catch {}
+
+    const byId = new Map<string, string>();
+    for (const entry of [...fromStorage, ...fromMemory]) {
+      byId.set(entry.peerId, entry.displayName);
+    }
+    return Array.from(byId.entries()).map(([peerId, displayName]) => ({ peerId, displayName }));
+  }
+
   getQuantumIdentity() { return this.qIdentity; }
   getPeerKeys(peerId: string) { return this.peerPks.get(peerId); }
   isHandshakeComplete(peerId: string) { return this.handshakeStatus.get(peerId) || false; }
@@ -2366,6 +2894,12 @@ export class IrohManager {
   setPeerDisplayName(peerId: string, displayName: string) {
     this.peerMetadata.set(peerId, { displayName });
     this.persistMetadata().catch(() => {});
+    try {
+      const raw = localStorage.getItem('nexus_peer_labels');
+      const labels = raw ? JSON.parse(raw) as Record<string, string> : {};
+      labels[peerId] = displayName;
+      localStorage.setItem('nexus_peer_labels', JSON.stringify(labels));
+    } catch {}
   }
   getGroups() { return Array.from(this.groups.values()); }
   isGroupOwner(groupId: string) { return this.groups.get(groupId)?.ownerId === this.identity?.id; }
@@ -2410,19 +2944,101 @@ export class IrohManager {
     this.currentPeerId = id;
   }
 
-  updateRelays(relays: string[]) {
+  /**
+   * Soft relay-list change: close old topic subs, drop activeSubscriptions/nostrSubs,
+   * close sockets for removed relay URLs, then re-subscribe against the new NOSTR_RELAYS.
+   * Does not touch secrets, handshake, ratchet, relaySessions, or WebRTC connections.
+   */
+  private rebindNostrSubscriptions(previousRelays: readonly string[]) {
+    const keysToRebind = subscriptionKeysToClearForRebind({
+      activeKeys: this.activeSubscriptions,
+      peerId: this.currentPeerId,
+      signalKind: SIGNAL_KIND,
+      relayDataKind: RELAY_DATA_KIND,
+      buildDataTopic: buildRelayDataTopic,
+    });
+
+    for (const key of keysToRebind) {
+      const sub = this.nostrSubs.get(key);
+      if (sub) {
+        try {
+          sub.close?.();
+        } catch {
+          /* ignore */
+        }
+        this.nostrSubs.delete(key);
+      }
+      this.activeSubscriptions.delete(key);
+    }
+
+    const removed = relaysRemovedFromList(previousRelays, NOSTR_RELAYS);
+    if (removed.length > 0) {
+      try {
+        this.nostrPool.close(removed);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    NOSTR_RELAYS.forEach((url) => {
+      try {
+        (this.nostrPool as any).ensureRelay(url).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    });
+
+    for (const key of keysToRebind) {
+      const parsed = parseNostrSubscriptionKey(key);
+      if (!parsed) continue;
+      this.listenOnNostr(parsed.topicId, parsed.kind);
+    }
+  }
+
+  /**
+   * Update the active Nostr pool.
+   * `soft: true` — rebind subscriptions to the new relay list without wiping secrets/handshake.
+   * Default — full reconnect (Reset / explicit user relay list edits).
+   */
+  setRelays(relays: string[], opts?: SetRelaysOpts) {
     if (!Array.isArray(relays) || relays.length === 0) return;
+    const previousRelays = [...NOSTR_RELAYS];
     NOSTR_RELAYS = relays;
     localStorage.setItem('nexus_custom_relays', JSON.stringify(relays));
+    const mode = relayUpdateMode(!!this.currentPeerId, opts);
+    if (mode === 'noop') return;
+    if (mode === 'soft') {
+      this.rebindNostrSubscriptions(previousRelays);
+      return;
+    }
     this.notifyStatus('info', 'Relay list updated. Re-initializing...');
     this.reconnect();
   }
 
-  resetRelays() {
+  updateRelays(relays: string[], opts?: SetRelaysOpts) {
+    this.setRelays(relays, opts);
+  }
+
+  /** Restore DEFAULT_NOSTR_RELAYS and clear nexus_custom_relays / token URLs. */
+  restoreDefaultRelays(opts?: SetRelaysOpts) {
+    const previousRelays = [...NOSTR_RELAYS];
     NOSTR_RELAYS = [...DEFAULT_NOSTR_RELAYS];
     localStorage.removeItem('nexus_custom_relays');
+    const mode = relayUpdateMode(!!this.currentPeerId, opts);
+    if (mode === 'noop') return;
+    if (mode === 'soft') {
+      this.rebindNostrSubscriptions(previousRelays);
+      return;
+    }
     this.notifyStatus('info', 'Relays reset to default.');
     this.reconnect();
+  }
+
+  resetRelays() {
+    savePrivateRelaySettings(clearedPrivateRelaySettings());
+    this.peerPrivateRelayHandoffs.clear();
+    this.privateRelayAttempted.clear();
+    this.restoreDefaultRelays();
   }
 
   getUserIceServers() {
@@ -2481,11 +3097,13 @@ export class IrohManager {
   }
 
   getPeerTransportStatus(peerId: string) {
+    const directConnected = this.connections.get(peerId)?.connected === true;
     return getProductTransportStatus({
-      directConnected: this.connections.get(peerId)?.connected === true,
+      directConnected,
       relayConnected: this.relayStatus.get(peerId) === 'connected',
       handshakeComplete: this.handshakeStatus.get(peerId) === true,
       failed: this.connectionStatus.get(peerId) === 'failed',
+      peerLive: directConnected || this.isPeerLive(peerId),
     });
   }
 }

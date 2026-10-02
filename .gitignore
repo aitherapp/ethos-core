@@ -15,3 +15,9 @@ coverage/
 
 graphify-out/
 .worktrees/
+
+# Local-only design specs and implementation plans (not published)
+docs/
+
+# Local-only Hermes agent plans (not published)
+.hermes/

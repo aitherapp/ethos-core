@@ -1,6 +1,7 @@
 import {
   buildNotificationData,
   formatPushNotification,
+  formatWakePushNotification,
   shouldSendRemotePush,
 } from './pushNotify';
 import { sendViaPushGateway } from './pushGatewayClient';
@@ -19,7 +20,8 @@ export function shouldSendPeerPush(opts: {
   directConnected: boolean;
   relayConnected: boolean;
 }): boolean {
-  return opts.hasPushEndpoint && !opts.directConnected && !opts.relayConnected;
+  void opts.relayConnected;
+  return opts.hasPushEndpoint && !opts.directConnected;
 }
 
 export function buildPeerPushArgs(senderName: string): {
@@ -61,6 +63,7 @@ export async function notifyPeerViaGateway(
     messageId: string;
     directConnected: boolean;
     relayConnected: boolean;
+    purpose?: 'wake' | 'delivery';
     fetchFn?: typeof fetch;
   }
 ): Promise<boolean> {
@@ -77,11 +80,15 @@ export async function notifyPeerViaGateway(
     return false;
   }
 
-  const { title, body } = formatPushNotification(
-    profile.pushContentMode ?? 'Sender',
-    opts.senderName,
-    opts.previewText
-  );
+  const purpose = opts.purpose ?? 'delivery';
+  const { title, body } =
+    purpose === 'wake'
+      ? formatWakePushNotification()
+      : formatPushNotification(
+          profile.pushContentMode ?? 'Sender',
+          opts.senderName,
+          opts.previewText
+        );
 
   const result = await sendViaPushGateway({
     baseUrl: profile.pushGatewayUrl,

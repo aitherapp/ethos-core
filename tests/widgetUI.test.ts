@@ -21,7 +21,7 @@ describe('Widget UI DOM', () => {
     expect(shadowRoot.querySelector('.ethos-chat-window')).not.toBeNull();
   });
 
-  it('should include branding footer with GitHub link', () => {
+  it('should include branding footer with version and GitHub link', () => {
     const { shadowRoot } = createWidgetDOM({
       ownerTicket: 'ethos://node/test',
       title: 'Support Chat',
@@ -30,13 +30,32 @@ describe('Widget UI DOM', () => {
     });
 
     const footer = shadowRoot.querySelector('.ethos-footer');
-    expect(footer).not.toBeNull();
-    expect(footer?.textContent).toContain('E T H O S by aitherapp');
+    expect(footer?.textContent).toContain('ETHOS widget v');
+    expect(footer?.textContent).toMatch(/v\d+\.\d+\.\d+/);
+    expect(footer?.querySelector('a')?.getAttribute('href')).toBe(
+      'https://github.com/aitherapp/ethos-core'
+    );
+  });
 
-    const link = footer?.querySelector('a');
-    expect(link).not.toBeNull();
-    expect(link?.getAttribute('href')).toBe('https://github.com/aitherapp/ethos-core');
-    expect(link?.getAttribute('target')).toBe('_blank');
+  it('should update header connection status via setConnectionStatus', () => {
+    const { shadowRoot, setConnectionStatus } = createWidgetDOM({
+      ownerTicket: 'ethos://node/test',
+      title: 'Support Chat',
+      greeting: 'Welcome!',
+      primaryColor: '#000000',
+    });
+
+    const subtitle = shadowRoot.querySelector('.ethos-header-subtitle');
+    const dot = shadowRoot.querySelector('.ethos-online-dot');
+    expect(subtitle?.textContent).toContain('Connecting');
+
+    setConnectionStatus('relay');
+    expect(subtitle?.textContent).toContain('Relay');
+    expect(dot?.className).toContain('ethos-online-dot--relay');
+
+    setConnectionStatus('offline');
+    expect(subtitle?.textContent).toContain('Offline');
+    expect(dot?.className).toContain('ethos-online-dot--offline');
   });
 
   it('should toggle chat window visibility on button click', () => {

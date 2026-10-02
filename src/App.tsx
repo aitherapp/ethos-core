@@ -30,7 +30,7 @@ import { exportIdentity } from './lib/crypto';
 import { diagnosticsLog, installDiagnosticsConsoleCapture, DiagnosticEntry } from './lib/diagnostics';
 import { IndexedDbMessageHistoryStore, loadEncryptedMessageHistory, saveEncryptedMessageHistory } from './lib/messageHistory';
 import { getMobileNavItems, MobileNavItemId } from './lib/mobileNav';
-import { removePeerFromList } from './lib/peerList';
+import { findPeerIdByDisplayQuery, forgetRemovedPeer, mergeDiscoveredPeers, rememberRemovedPeer, removePeerFromList } from './lib/peerList';
 import { isNearScrollBottom } from './lib/chatScroll';
 import { ETHOS_MONERO_DONATION_ADDRESS, getMoneroDonationUri } from './lib/donations';
 import { validateHistoryPassphrase } from './lib/historyLock';
@@ -46,9 +46,30 @@ import {
   type PushSettings,
   type PushTriggerMode,
 } from './lib/pushSettings';
+import {
+  loadPrivateRelaySettings,
+  savePrivateRelaySettings,
+  privateRelaySaveAction,
+  type PrivateRelaySettings,
+} from './lib/privateRelaySettings';
 import { enablePushPipeline } from './lib/pushPipeline';
 import { sendViaPushGateway, unregisterPushSubscription } from './lib/pushGatewayClient';
-import { parseChatDeepLink } from './lib/pushNotify';
+import {
+  ETHOS_PUSH_WAKE,
+  buildNotificationData,
+  isWakePlaceholderMessageId,
+  parseChatDeepLink,
+  resolveNotificationDeepLink,
+} from './lib/pushNotify';
+import { getAppLaunchHash } from './lib/appRoute';
+import { consumeStashedChatDeepLink } from './lib/deepLinkStash';
+import {
+  countUnread,
+  firstUnreadMessageId,
+  loadLastReadMap,
+  saveLastRead,
+  type LastReadMap,
+} from './lib/unreadMarkers';
 import { SecureMessage, Identity, FileTransfer, Group } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -59,6 +80,7 @@ import {
   isValidUserIceServer,
   type UserIceServer,
 } from './lib/iceServers';
+import { APP_VERSION } from './version';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -87,10 +109,202 @@ const playNote = (freq: number, duration: number, type: OscillatorType = 'sine')
 const playSendSound = () => playNote(800, 0.1);
 const playReceiveSound = () => playNote(600, 0.15);
 
-// Keep in sync with CACHE_NAME in public/sw.js when busting caches
-const APP_VERSION = '3.1.92';
-
 const ABOUT_CHANGELOG = [
+  {
+    version: '3.2.10',
+    title: 'Security Deps & Warrant Canary',
+    date: '2026-10-02',
+    changes: [
+      'Upgraded wrangler in the push-gateway and relay Workers so undici is patched against a TLS certificate validation bypass (Dependabot alerts 22/23).',
+      'Refreshed the public warrant canary statement and expected-next-update dates (weekly cadence).',
+      'Bumped the app, service-worker, and widget.js?v= cache keys so browsers fetch the refreshed canary.',
+    ],
+  },
+  {
+    version: '3.2.9',
+    title: 'About Soft-Resume Notes',
+    date: '2026-09-21',
+    changes: [
+      'What Changed Recently now lists Mobile Soft Resume & Discreet Wake first, so the latest work is visible at the top of About.',
+      'Reliability Notes describe soft resume on foreground, discreet “Incoming connection…” wake pushes, and sender-side message queuing.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
+    version: '3.2.8',
+    title: 'Mobile Soft Resume & Discreet Wake',
+    date: '2026-09-21',
+    changes: [
+      'Background wake pushes say “Incoming connection…” instead of claiming a delivered “New message”.',
+      'Foregrounding the app (or receiving a push while a client is open) soft-resumes relay sockets without tapping RECONNECT.',
+      'Failed wake-and-send queues the message on the sender until the peer is reachable; handshakes are throttled to avoid private-relay rate limits.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
+    version: '3.2.7',
+    title: 'Settings Docs Links',
+    date: '2026-09-20',
+    changes: [
+      'Settings help links for push gateway and private relay now open the GitHub source folders instead of broken Pages paths.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
+    version: '3.2.6',
+    title: 'Opt-in BYO Private Relay',
+    date: '2026-09-20',
+    changes: [
+      'Owners can one-click deploy a private Cloudflare Nostr relay and share credentials after DHT discovery over an encrypted handshake.',
+      'Widget embeds can use data-relay-url and data-relay-token for private-only mesh; public defaults remain until BYO is enabled.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys for this release.',
+    ],
+  },
+  {
+    version: '3.2.5',
+    title: 'Wake Before Relay Ciphertext',
+    date: '2026-09-20',
+    changes: [
+      'Widget always wakes the owner and invalidates zombie relay sessions before sending, so notifications are no longer orphaned without chat text.',
+      'Relay mode is only “usable” when the peer has been recently active; ethos→ethos sendMessage wake-waits the same way when push is configured.',
+      'Bumped the app, service-worker, and widget.js?v= cache keys so embeds pick up the fix.',
+    ],
+  },
+  {
+    version: '3.2.4',
+    title: 'Restore Removed Visitors',
+    date: '2026-09-20',
+    changes: [
+      'Re-add deleted visitors by typing #aa8f / Visitor #aa8f (local label lookup, not DHT).',
+      'Contact labels are kept after removal; a new message from a removed visitor restores the contact.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.2.3',
+    title: 'Contact List Hygiene',
+    date: '2026-09-20',
+    changes: [
+      'Connecting to a peer no longer adopts their website widget visitors as your contacts.',
+      'Removed contacts stay removed (blocklist + disconnect) instead of reappearing from mesh discovery.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.2.2',
+    title: 'Unread Markers & Push Deep-Links',
+    date: '2026-09-20',
+    changes: [
+      'Notification clicks always postMessage the deep link (navigate no longer skips it) and re-consume the iOS stash on focus.',
+      'Widget wake retries send a second push with the real message id; wake placeholders open the peer chat instead of waiting forever.',
+      'Peer list shows unread dots/counts; chat threads show an English “New messages” divider above the first unread inbound message.',
+      'Local widget notifications include peer/message deep-link data.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.2.1',
+    title: 'Deploy Lint Fix',
+    date: '2026-09-20',
+    changes: [
+      'Fixed a TypeScript error in the widget deliver-outbound test that blocked the v3.2.0 Pages deploy.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.2.0',
+    title: 'BYO Push & Embeddable Widget',
+    date: '2026-09-20',
+    changes: [
+      'Minor milestone for opt-in BYO push gateway, reliable mobile wake-ups, and the embeddable site widget.',
+      'Notification deep-links open the correct chat on iOS; widget shows version and live Direct/Relay/Offline status.',
+      'Widget wake-then-deliver pairs push with ciphertext retry; embed URLs use widget.js?v= for cache busting.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.100',
+    title: 'Widget Wake Then Deliver',
+    date: '2026-09-20',
+    changes: [
+      'Widget push wake-ups now wait for a usable tunnel and retry send, so a notification is not left without the actual message.',
+      'Peer send only fires remote push after ciphertext is on a live direct/relay transport.',
+      'Undelivered widget messages are marked in the visitor chat instead of looking successful.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.99',
+    title: 'Widget Script Cache Bust',
+    date: '2026-09-20',
+    changes: [
+      'README embed snippet uses widget.js?v= matching the release so browsers do not keep a stale widget bundle.',
+      'Deploy checklist now requires bumping the widget embed ?v= alongside app/SW/manifest cache keys.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.98',
+    title: 'Widget Version & Connection Status',
+    date: '2026-09-20',
+    changes: [
+      'Embeddable widget footer shows the build version (ETHOS widget v…) so site owners know which release they are serving.',
+      'Widget header shows live peer transport: Connecting…, Direct, Relay, or Offline (replacing the static green “online” dot).',
+      'Shared APP_VERSION lives in src/version.ts for the main app and widget; bumped app and service-worker cache version.',
+    ],
+  },
+  {
+    version: '3.1.97',
+    title: 'Notification Deep-Link Opens Chat',
+    date: '2026-09-20',
+    changes: [
+      'Tapping a push notification opens the chat app for #/chat/… deep links instead of the marketing landing page.',
+      'iOS home-screen launches stash the deep link so start_url (#app) still jumps to the right peer/message.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.96',
+    title: 'Widget Owner Wake-Up',
+    date: '2026-09-20',
+    changes: [
+      'Site widget always requests a gateway push to wake the ETHOS owner, ignoring stale direct/relay “connected” flags on a backgrounded phone.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.95',
+    title: 'Push Wake-Up Reliability',
+    date: '2026-09-20',
+    changes: [
+      'Background-only push still fires when only relay looks connected, so backgrounded iPhones get wake-ups again.',
+      'Startup no longer replaces the Web Push subscription on every load; refreshed endpoints are re-broadcast to peers.',
+      'Service worker claims clients on activate after cache updates.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.94',
+    title: 'Deep-Link Jump & iOS Input Zoom',
+    date: '2026-09-20',
+    changes: [
+      'Notification taps open the target chat message reliably (pending deep-link state, DOM retry, absolute service-worker URL).',
+      'Message composer uses 16px text on phones so iOS Safari does not zoom the page and push Send off-screen.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
+  {
+    version: '3.1.93',
+    title: 'Mobile Composer & Toast Fixes',
+    date: '2026-09-20',
+    changes: [
+      'Status toasts auto-dismiss, can be tapped away, and no longer cover Settings Save on phones.',
+      'Push feedback stays inside Settings while that panel is open.',
+      'Chat send stays in view on narrow iPhones: ephemeral control is icon-only below the sm breakpoint.',
+      'Opening a notification deep-link highlights once then releases scroll — the green pulse no longer traps the chat list.',
+      'Bumped the app and service-worker cache version so browsers fetch the refreshed build.',
+    ],
+  },
   {
     version: '3.1.92',
     title: 'Push Settings Feedback & Gateway Fixes',
@@ -637,6 +851,9 @@ export default function App() {
   const [activePeer, setActivePeer] = useState<string | null>(null);
   const [peers, setPeers] = useState<string[]>([]);
   const [knownPeers, setKnownPeers] = useState<string[]>([]);
+  const [removedPeers, setRemovedPeers] = useState<string[]>([]);
+  const removedPeersRef = useRef<string[]>([]);
+  removedPeersRef.current = removedPeers;
   const [transfers, setTransfers] = useState<FileTransfer[]>([]);
   const [newPeerId, setNewPeerId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -656,6 +873,10 @@ export default function App() {
   const [tempName, setTempName] = useState('');
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState('');
+  const [privateRelaySettings, setPrivateRelaySettings] = useState<PrivateRelaySettings>(() =>
+    loadPrivateRelaySettings()
+  );
+  const [isPrivateRelayRetrying, setIsPrivateRelayRetrying] = useState(false);
   const [iceServers, setIceServers] = useState<UserIceServer[]>([]);
   const [iceDraft, setIceDraft] = useState({
     label: '',
@@ -689,10 +910,27 @@ export default function App() {
     setPkarrEnabledState(next);
   };
 
+  const statusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStatusSoon = (ms = 4000) => {
+    if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
+    statusClearTimerRef.current = setTimeout(() => setStatus(null), ms);
+  };
+
   const reportPushFeedback = (type: 'info' | 'warning' | 'error', message: string) => {
     setPushFeedback({ type, message });
-    setStatus({ type, message });
+    // Keep feedback inside Settings on mobile so the global toast does not cover Save.
+    if (!showSettings) {
+      setStatus({ type, message });
+      clearStatusSoon();
+    }
   };
+
+  useEffect(() => {
+    if (!showSettings) return;
+    if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
+    setStatus(null);
+  }, [showSettings]);
 
   const persistPushSettings = async (next: PushSettings): Promise<boolean> => {
     savePushSettings(next);
@@ -790,7 +1028,8 @@ export default function App() {
     }
   };
 
-  const allPersistedPeers = [...new Set([...peers, ...knownPeers])];
+  const allPersistedPeers = [...new Set([...peers, ...knownPeers])]
+    .filter(id => !removedPeers.includes(id));
   const filteredPeers = allPersistedPeers.filter(id => 
     id.toLowerCase().includes(searchQuery.toLowerCase()) || 
     iroh.getPeerName(id)?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -798,9 +1037,11 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
-  const jumpToMessageIdRef = useRef<string | null>(null);
   const pendingJumpNoticeRef = useRef(false);
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ peerId: string; messageId: string } | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [lastReadMap, setLastReadMap] = useState<LastReadMap>({});
+  const [newMessagesAnchorId, setNewMessagesAnchorId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageHistoryStoreRef = useRef(new IndexedDbMessageHistoryStore());
   const messageHistoryContextRef = useRef<{ identityMaterial: string; nodeId: string; lockSecret?: string } | null>(null);
@@ -840,10 +1081,24 @@ export default function App() {
       }
       isMessageHistoryReadyRef.current = true;
       
+      const savedRemoved = localStorage.getItem('nexus_removed_peers');
+      let removed: string[] = [];
+      if (savedRemoved) {
+        try {
+          removed = JSON.parse(savedRemoved);
+          setRemovedPeers(removed);
+        } catch (e) {}
+      }
+
       const savedPeers = localStorage.getItem('nexus_peer_list');
       if (savedPeers) {
         try {
-          setKnownPeers(JSON.parse(savedPeers));
+          const parsed = JSON.parse(savedPeers) as string[];
+          const cleaned = mergeDiscoveredPeers([], parsed, removed);
+          setKnownPeers(cleaned);
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('nexus_peer_list', JSON.stringify(cleaned));
+          }
         } catch (e) {}
       }
       
@@ -892,6 +1147,10 @@ export default function App() {
         iroh.setPeerDisplayName(msg.senderId, visitorLabel);
         sendLocalNotification(`New chat from ${widgetMeta.visitorId}`, {
           body: `[${widgetMeta.page}] ${widgetMeta.message}`,
+          data: buildNotificationData({
+            peerId: msg.senderId,
+            messageId: processedMsg.id,
+          }),
         });
       }
 
@@ -913,13 +1172,19 @@ export default function App() {
       
       setPeers(prev => prev.includes(msg.senderId) ? prev : [...prev, msg.senderId]);
       if (msg.senderId !== identity?.id) playReceiveSound();
-      setKnownPeers(prev => {
-        if (!prev.includes(msg.senderId)) {
-          const next = [...prev, msg.senderId];
-          localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+      // Inbound chat restores a previously removed contact (explicit user intent via messaging).
+      if (removedPeersRef.current.includes(msg.senderId)) {
+        setRemovedPeers(prev => {
+          const next = forgetRemovedPeer(prev, msg.senderId);
+          localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
           return next;
-        }
-        return prev;
+        });
+      }
+      setKnownPeers(prev => {
+        if (prev.includes(msg.senderId)) return prev;
+        const next = [...prev, msg.senderId];
+        localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+        return next;
       });
     });
 
@@ -950,8 +1215,8 @@ export default function App() {
       setKnownPeers(prev => {
         const failed = iroh.getFailedPeers();
         const visible = iroh.getVisiblePeers();
-        const next = [...new Set([...prev, ...visible, ...failed])];
-        if (next.length !== prev.length) {
+        const next = mergeDiscoveredPeers(prev, [...visible, ...failed], removedPeersRef.current);
+        if (next.length !== prev.length || next.some((id, i) => id !== prev[i])) {
           localStorage.setItem('nexus_peer_list', JSON.stringify(next));
         }
         return next;
@@ -967,31 +1232,65 @@ export default function App() {
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   };
 
+  const peersRef = useRef(peers);
+  peersRef.current = peers;
+
   useEffect(() => {
-    if (jumpToMessageIdRef.current) {
+    if (pendingDeepLink) {
       shouldAutoScrollRef.current = false;
       return;
     }
     shouldAutoScrollRef.current = true;
     scrollChatToBottom();
-  }, [activePeer, activeGroup]);
+  }, [activePeer, activeGroup, pendingDeepLink]);
+
+  const clearChatDeepLinkHash = () => {
+    if (!parseChatDeepLink(window.location.hash)) return;
+    // Return to the app hash so Root keeps the chat mounted (empty hash shows landing).
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}${getAppLaunchHash()}`
+    );
+  };
 
   const applyChatDeepLink = useCallback((peerId: string, messageId: string) => {
     setActivePeer(peerId);
     setActiveGroup(null);
     setMobilePanel('chat');
-    jumpToMessageIdRef.current = messageId;
     pendingJumpNoticeRef.current = false;
-    shouldAutoScrollRef.current = false;
-    if (!peers.includes(peerId)) {
+    if (!peersRef.current.includes(peerId)) {
       iroh.notifyStatus('info', `Re-connecting to ${peerId.slice(0, 8)}...`);
       iroh.connectByTicket(peerId);
     }
+
+    // Widget wake pushes use a synthetic id before ciphertext exists — open the peer only.
+    if (isWakePlaceholderMessageId(messageId)) {
+      shouldAutoScrollRef.current = true;
+      setPendingDeepLink(null);
+      if (parseChatDeepLink(window.location.hash)) {
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${window.location.search}${getAppLaunchHash()}`
+        );
+      }
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+      return;
+    }
+
+    shouldAutoScrollRef.current = false;
     const hash = `#/chat/${peerId}/${messageId}`;
     if (window.location.hash !== hash) {
       window.history.replaceState(null, '', hash);
     }
-  }, [peers]);
+    // State (not only a ref) so the jump effect re-runs even when already on this peer.
+    setPendingDeepLink({ peerId, messageId });
+  }, []);
 
   useEffect(() => {
     const fromHash = () => {
@@ -1000,24 +1299,66 @@ export default function App() {
     };
     fromHash();
 
-    const onSwMessage = (event: MessageEvent) => {
-      if (event.data?.type !== 'ethos_notification_open') return;
-      const { peerId, messageId } = event.data as { peerId?: string; messageId?: string };
-      if (peerId && messageId) applyChatDeepLink(peerId, messageId);
+    const tryConsumeStash = () => {
+      void consumeStashedChatDeepLink().then((stashed) => {
+        if (stashed) applyChatDeepLink(stashed.peerId, stashed.messageId);
+      });
     };
 
+    const onSwMessage = (event: MessageEvent) => {
+      const type = event.data?.type;
+      if (type === 'ethos_notification_open' || type === ETHOS_PUSH_WAKE) {
+        void iroh.resumeSignaling();
+      }
+      if (type !== 'ethos_notification_open') return;
+      const resolved = resolveNotificationDeepLink(
+        event.data as { peerId?: string; messageId?: string; url?: string }
+      );
+      if (resolved) {
+        applyChatDeepLink(resolved.peerId, resolved.messageId);
+      } else {
+        tryConsumeStash();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void iroh.resumeSignaling();
+        tryConsumeStash();
+      }
+    };
+
+    const onPageShow = () => {
+      void iroh.resumeSignaling();
+    };
+
+    // iOS home-screen launches often ignore openWindow and use manifest start_url (#app).
+    // The service worker stashes the deep link so we can still jump after boot / focus.
+    tryConsumeStash();
+
     window.addEventListener('hashchange', fromHash);
+    window.addEventListener('focus', tryConsumeStash);
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisible);
     navigator.serviceWorker?.addEventListener('message', onSwMessage);
     return () => {
       window.removeEventListener('hashchange', fromHash);
+      window.removeEventListener('focus', tryConsumeStash);
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisible);
       navigator.serviceWorker?.removeEventListener('message', onSwMessage);
     };
   }, [applyChatDeepLink]);
 
   useEffect(() => {
-    const targetId = jumpToMessageIdRef.current;
-    if (!targetId || !activePeer) return;
+    if (!pendingDeepLink) return;
+    if (activePeer !== pendingDeepLink.peerId) return;
+    if (mobilePanel !== 'chat') {
+      setMobilePanel('chat');
+      return;
+    }
 
+    const targetId = pendingDeepLink.messageId;
     const inThread = messages.some(
       (m) =>
         m.id === targetId &&
@@ -1036,24 +1377,69 @@ export default function App() {
       return;
     }
 
-    requestAnimationFrame(() => {
-      document.getElementById(`msg-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`msg-${targetId}`);
+      if (!el) {
+        if (attempts++ < 45) {
+          requestAnimationFrame(tryScroll);
+        }
+        return;
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightedMessageId(targetId);
       window.setTimeout(() => {
         setHighlightedMessageId((current) => (current === targetId ? null : current));
       }, 2200);
-      if (jumpToMessageIdRef.current === targetId) {
-        jumpToMessageIdRef.current = null;
-        pendingJumpNoticeRef.current = false;
-      }
-    });
-  }, [messages, activePeer]);
+      pendingJumpNoticeRef.current = false;
+      setPendingDeepLink(null);
+      // Clear hash only after a successful jump so cold-open / retries still work.
+      clearChatDeepLinkHash();
+    };
+    requestAnimationFrame(tryScroll);
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDeepLink, messages, activePeer, mobilePanel]);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
       scrollChatToBottom();
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!identity?.id) return;
+    setLastReadMap(loadLastReadMap(identity.id));
+  }, [identity?.id]);
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const lastReadMapRef = useRef(lastReadMap);
+  lastReadMapRef.current = lastReadMap;
+
+  // Capture "New messages" divider when opening a peer; mark conversation read.
+  useEffect(() => {
+    if (!identity?.id || !activePeer || mobilePanel !== 'chat') {
+      if (!activePeer) setNewMessagesAnchorId(null);
+      return;
+    }
+    const prevRead = lastReadMapRef.current[activePeer];
+    const anchor =
+      prevRead != null
+        ? firstUnreadMessageId(messagesRef.current, activePeer, prevRead, identity.id)
+        : null;
+    setNewMessagesAnchorId(anchor);
+    setLastReadMap(saveLastRead(identity.id, activePeer, Date.now()));
+  }, [activePeer, mobilePanel, identity?.id]);
+
+  // Keep last-read fresh while the chat is open so the peer badge stays clear.
+  useEffect(() => {
+    if (!identity?.id || !activePeer || mobilePanel !== 'chat') return;
+    setLastReadMap(saveLastRead(identity.id, activePeer, Date.now()));
+  }, [messages, activePeer, mobilePanel, identity?.id]);
 
   const handleConnect = async () => {
     if (newPeerId.trim()) {
@@ -1063,27 +1449,41 @@ export default function App() {
       let targetId = input;
       // Nexus Tickets (peer IDs) were 16 chars (v2.6) and are now 64 chars (v2.7+)
       const isTicket = isDirectPeerTicket(input);
-      
+
       if (!isTicket) {
-        setStatus({ type: 'info', message: `DHT Lookup: ${input}` });
-        const resolved = await iroh.searchByName(input);
-        if (resolved) {
-          setUnverifiedDiscovery({ name: input, peerId: resolved });
-          setStatus({ type: 'warning', message: 'Name discovery is unverified. Confirm the peer ticket before connecting.' });
-          setIsConnecting(false);
-          setShowAddPeer(false);
-          return;
+        const localMatch = findPeerIdByDisplayQuery(input, iroh.listPeerDisplayEntries());
+        if (localMatch) {
+          targetId = localMatch;
         } else {
-          setStatus({ type: 'error', message: `Could not find node for: ${input}` });
-          setIsConnecting(false);
-          return;
+          setStatus({ type: 'info', message: `DHT Lookup: ${input}` });
+          const resolved = await iroh.searchByName(input);
+          if (resolved) {
+            setUnverifiedDiscovery({ name: input, peerId: resolved });
+            setStatus({ type: 'warning', message: 'Name discovery is unverified. Confirm the peer ticket before connecting.' });
+            setIsConnecting(false);
+            setShowAddPeer(false);
+            return;
+          } else {
+            setStatus({ type: 'error', message: `Could not find node for: ${input}` });
+            setIsConnecting(false);
+            return;
+          }
         }
       }
 
       try {
         await iroh.connectByTicket(targetId);
         setNewPeerId('');
-        setKnownPeers(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
+        setRemovedPeers(prev => {
+          const next = forgetRemovedPeer(prev, targetId);
+          localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+          return next;
+        });
+        setKnownPeers(prev => {
+          const next = prev.includes(targetId) ? prev : [...prev, targetId];
+          localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+          return next;
+        });
         setShowAddPeer(false);
         // Stay in connecting state until secure direct/relay mode or error status fires
       } catch (err) {
@@ -1101,7 +1501,16 @@ export default function App() {
 
     try {
       await iroh.connectByTicket(targetId);
-      setKnownPeers(prev => prev.includes(targetId) ? prev : [...prev, targetId]);
+      setRemovedPeers(prev => {
+        const next = forgetRemovedPeer(prev, targetId);
+        localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+        return next;
+      });
+      setKnownPeers(prev => {
+        const next = prev.includes(targetId) ? prev : [...prev, targetId];
+        localStorage.setItem('nexus_peer_list', JSON.stringify(next));
+        return next;
+      });
       setNewPeerId('');
       setUnverifiedDiscovery(null);
     } catch (err) {
@@ -1114,6 +1523,7 @@ export default function App() {
   const handleOpenSettings = () => {
     setTempName(identity?.displayName || '');
     setRelays(iroh.getRelays());
+    setPrivateRelaySettings(loadPrivateRelaySettings());
     setIceServers(iroh.getUserIceServers());
     setIceDraft({ label: '', urls: '', username: '', credential: '' });
     setIceTestMessage(null);
@@ -1224,6 +1634,57 @@ export default function App() {
   const handleResetRelays = () => {
     iroh.resetRelays();
     setRelays(iroh.getRelays());
+    setPrivateRelaySettings(loadPrivateRelaySettings());
+  };
+
+  const persistPrivateRelaySettings = async (next: PrivateRelaySettings): Promise<boolean> => {
+    const action = privateRelaySaveAction(next);
+
+    // Disable: clear ready/advertise and restore public defaults (no private token URL stuck).
+    if (!next.enabled) {
+      const disabled = { ...next, enabled: false, ready: false };
+      savePrivateRelaySettings(disabled);
+      setPrivateRelaySettings(disabled);
+      iroh.clearPrivateRelayPool({ soft: true });
+      setRelays(iroh.getRelays());
+      return true;
+    }
+
+    if (action.error) {
+      const failed = { ...next, enabled: false, ready: false };
+      savePrivateRelaySettings(failed);
+      setPrivateRelaySettings(failed);
+      setStatus({ type: 'warning', message: action.error });
+      clearStatusSoon();
+      return false;
+    }
+
+    // Probe/apply before marking ready so helo never advertises unproven credentials.
+    savePrivateRelaySettings({ ...next, enabled: true, ready: false });
+    setPrivateRelaySettings({ ...next, enabled: true, ready: false });
+    const ok = await iroh.applyPrivateRelayFromSettings();
+    setPrivateRelaySettings(loadPrivateRelaySettings());
+    setRelays(iroh.getRelays());
+    if (!ok) {
+      setStatus({ type: 'warning', message: 'Private relay unavailable' });
+      clearStatusSoon();
+      return false;
+    }
+    return true;
+  };
+
+  const handleRetryPrivateRelay = async () => {
+    setIsPrivateRelayRetrying(true);
+    try {
+      const ok = await iroh.retryPrivateRelayHandoff();
+      setRelays(iroh.getRelays());
+      if (!ok) {
+        setStatus({ type: 'warning', message: 'Private relay unavailable' });
+        clearStatusSoon();
+      }
+    } finally {
+      setIsPrivateRelayRetrying(false);
+    }
   };
 
   const handleCopyDiagnostics = async () => {
@@ -1333,6 +1794,12 @@ export default function App() {
   };
 
   const handleRemovePeer = (peerId: string) => {
+    iroh.forgetPeer(peerId);
+    setRemovedPeers(prev => {
+      const next = rememberRemovedPeer(prev, peerId);
+      localStorage.setItem('nexus_removed_peers', JSON.stringify(next));
+      return next;
+    });
     setKnownPeers(prev => {
       const next = removePeerFromList(prev, peerId);
       localStorage.setItem('nexus_peer_list', JSON.stringify(next));
@@ -1641,6 +2108,10 @@ export default function App() {
               {filteredPeers.map(peerId => {
                 const isFailed = iroh.getFailedPeers().includes(peerId);
                 const transport = iroh.getPeerTransportStatus(peerId);
+                const unread =
+                  identity
+                    ? countUnread(messages, peerId, lastReadMap[peerId] ?? 0, identity.id)
+                    : 0;
                 return (
                   <div
                     key={peerId}
@@ -1689,7 +2160,22 @@ export default function App() {
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    {activePeer === peerId && <div className="w-1.5 h-1.5 bg-brand rounded-full"></div>}
+                    {unread > 0 ? (
+                      <span
+                        className="flex items-center gap-1 shrink-0"
+                        title={`${unread} unread`}
+                        aria-label={`${unread} unread messages`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-brand" aria-hidden />
+                        {unread > 1 && (
+                          <span className="text-[9px] font-bold text-brand tabular-nums">
+                            {unread > 99 ? '99+' : unread}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      activePeer === peerId && <div className="w-1.5 h-1.5 bg-brand rounded-full"></div>
+                    )}
                   </div>
                 );
               })}
@@ -1894,9 +2380,30 @@ export default function App() {
                   if (activeGroup) return m.groupId === activeGroup;
                   return !m.groupId && (m.senderId === activePeer || m.receiverId === activePeer);
                 }).map((msg) => (
+                  <React.Fragment key={msg.id}>
+                    {!activeGroup && newMessagesAnchorId === msg.id && (
+                      <div
+                        className="flex items-center gap-3 py-1"
+                        role="separator"
+                        aria-label="New messages"
+                      >
+                        <div className="flex-1 h-px bg-brand/30" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-brand/80 whitespace-nowrap">
+                          New messages
+                        </span>
+                        <div className="flex-1 h-px bg-brand/30" />
+                      </div>
+                    )}
                   <div 
-                    key={msg.id}
                     id={`msg-${msg.id}`}
+                    onAnimationEnd={(event) => {
+                      if (
+                        event.animationName === 'msg-deep-link-pulse' &&
+                        highlightedMessageId === msg.id
+                      ) {
+                        setHighlightedMessageId(null);
+                      }
+                    }}
                     className={cn(
                       "flex gap-4 max-w-2xl group",
                       msg.senderId === identity?.id ? "ml-auto flex-row-reverse" : "",
@@ -2020,23 +2527,25 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  </React.Fragment>
                 ))}
               </div>
 
               {/* Input Bar */}
-              <footer className="fixed bottom-0 left-0 right-0 z-30 bg-surface-sidebar border-t border-border pb-[env(safe-area-inset-bottom)]">
-                <div className="relative flex items-center bg-bg border border-border rounded-none xs:rounded-lg px-3 xs:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner w-full max-w-2xl mx-auto overflow-hidden">
+              <footer className="fixed bottom-0 left-0 right-0 z-30 bg-surface-sidebar border-t border-border pb-[env(safe-area-inset-bottom)] overflow-x-clip">
+                <div className="relative flex items-center gap-2 bg-bg border border-border rounded-none sm:rounded-lg px-2 sm:px-4 py-2 focus-within:border-brand/40 transition-colors shadow-inner w-full max-w-2xl mx-auto box-border overflow-hidden">
                   <button 
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!!activeGroup}
-                    className="text-text-secondary hover:text-white mr-2 xs:mr-3 transition-colors group disabled:opacity-20 shrink-0"
+                    className="text-text-secondary hover:text-white shrink-0 transition-colors group disabled:opacity-20"
+                    aria-label="Attach file"
                   >
                     <Paperclip className="w-5 h-5 group-hover:text-brand" />
                   </button>
                   <input 
                     type="text" 
                     placeholder={activeGroup ? "Message Group..." : "Message Peer..."} 
-                    className="bg-transparent flex-1 outline-none text-xs xs:text-sm placeholder-gray-700 font-mono w-0 min-w-0"
+                    className="bg-transparent flex-1 outline-none text-base sm:text-sm placeholder-gray-700 font-mono w-0 min-w-0"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
@@ -2045,26 +2554,27 @@ export default function App() {
                       }
                     }}
                   />
-                  <div className="flex items-center gap-1.5 xs:gap-3 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                     <button 
                       onClick={() => setIsEphemeral(!isEphemeral)}
                       title={isEphemeral ? "Disable Ephemeral (Standard Only)" : "Enable Ephemeral (Burn after 1m)"}
+                      aria-label={isEphemeral ? "Disable ephemeral messages" : "Enable ephemeral messages"}
                       className={cn(
-                        "flex items-center gap-1.5 px-2 xs:px-3 py-1.5 rounded-lg border transition-all text-[9px] xs:text-[10px] font-bold uppercase tracking-wider",
+                        "flex items-center justify-center gap-1.5 w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider shrink-0",
                         isEphemeral 
                           ? "bg-orange-500/10 border-orange-500/50 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.2)]" 
                           : "bg-surface-rail border-border text-text-secondary hover:text-white"
                       )}
                     >
-                      <Clock className={cn("w-3 h-3 xs:w-3.5 xs:h-3.5", isEphemeral ? "animate-pulse" : "opacity-40")} />
-                      <span className="hidden xs:inline">{isEphemeral ? 'Ephemeral' : 'Standard'}</span>
-                      <span className="xs:hidden">{isEphemeral ? 'EPH' : 'STD'}</span>
+                      <Clock className={cn("w-3.5 h-3.5", isEphemeral ? "animate-pulse" : "opacity-40")} />
+                      <span className="hidden sm:inline">{isEphemeral ? 'Ephemeral' : 'Standard'}</span>
                     </button>
                     <button 
                       onClick={handleSendMessage}
                       disabled={!inputText.trim() || isSending}
+                      aria-label="Send message"
                       className={cn(
-                        "bg-brand text-black w-7 h-7 xs:w-8 xs:h-8 rounded flex items-center justify-center transition-all shadow-[0_0_10px_rgba(0,255,65,0.4)] shrink-0",
+                        "bg-brand text-black w-8 h-8 rounded flex items-center justify-center transition-all shadow-[0_0_10px_rgba(0,255,65,0.4)] shrink-0",
                         inputText.trim() && !isSending ? "hover:opacity-90 active:scale-95 group" : "opacity-30 cursor-not-allowed"
                       )}
                     >
@@ -2072,7 +2582,7 @@ export default function App() {
                         <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
                       ) : (
                         <Send className={cn(
-                          "w-3.5 h-3.5 xs:w-4 xs:h-4 transition-transform",
+                          "w-4 h-4 transition-transform",
                           inputText.trim() && "group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                         )} />
                       )}
@@ -2403,9 +2913,10 @@ export default function App() {
                 <section>
                   <h3 className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-2">Reliability Notes</h3>
                   <p>
-                    Mobile browsers can pause tabs in the background, and some networks block direct WebRTC paths.
-                    For best results, keep ETHOS open and foregrounded while connecting or transferring files. If a peer is offline
-                    or their browser is sleeping, ETHOS will wait instead of spamming relays.
+                    Mobile browsers can pause tabs in the background and drop WebSocket relay connections quickly.
+                    Opening ETHOS again (or tapping a wake notification) soft-resumes signaling without a full RECONNECT.
+                    If a peer is asleep, ETHOS sends a discreet “Incoming connection…” wake push, queues the message on the sender,
+                    and delivers it when the peer comes back — without flooding private relays.
                   </p>
                 </section>
 
@@ -2650,8 +3161,13 @@ export default function App() {
 
                   <p className="text-[9px] opacity-40 leading-relaxed">
                     After one-click Cloudflare deploy, open your Worker URL to copy the auth token (shown once). See{' '}
-                    <a href="./push-gateway/README.md" className="text-brand hover:underline" target="_blank" rel="noreferrer">
-                      push-gateway/README.md
+                    <a
+                      href="https://github.com/aitherapp/ethos-core/tree/main/push-gateway"
+                      className="text-brand hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      push-gateway on GitHub
                     </a>
                     . Any HTTPS host that implements the same API works.
                   </p>
@@ -2763,6 +3279,83 @@ export default function App() {
                   <p className="text-[9px] opacity-20 italic font-mono leading-tight">
                     Signaling relays facilitate WebRTC handshakes. Adding multiple relays improves reliability in restricted networks.
                   </p>
+
+                  <div className="space-y-3 p-3 bg-bg border border-border rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPrivateRelaySettings(current => ({
+                          ...current,
+                          enabled: !current.enabled,
+                          ready: false,
+                        }))
+                      }
+                      className={`w-full flex items-center justify-between p-3 border rounded transition-colors ${privateRelaySettings.enabled ? 'bg-brand/10 border-brand/20' : 'bg-bg border-border'}`}
+                    >
+                      <span className="text-xs font-mono">Enable private relay</span>
+                      <div className={`w-8 h-4 rounded-full relative transition-colors ${privateRelaySettings.enabled ? 'bg-brand' : 'bg-border'}`}>
+                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${privateRelaySettings.enabled ? 'left-4.5' : 'left-0.5'}`} />
+                      </div>
+                    </button>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Relay URL</label>
+                      <input
+                        type="url"
+                        value={privateRelaySettings.relayUrl}
+                        onChange={(e) =>
+                          setPrivateRelaySettings(current => ({
+                            ...current,
+                            relayUrl: e.target.value,
+                            ready: false,
+                          }))
+                        }
+                        className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                        placeholder="wss://…"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold opacity-40 mb-2">Auth token</label>
+                      <input
+                        type="password"
+                        value={privateRelaySettings.authToken}
+                        onChange={(e) =>
+                          setPrivateRelaySettings(current => ({
+                            ...current,
+                            authToken: e.target.value,
+                            ready: false,
+                          }))
+                        }
+                        className="w-full bg-bg border border-border rounded px-3 py-2 text-xs font-mono focus:border-brand outline-none transition-colors"
+                        placeholder="Token from your relay setup page"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <p className="text-[9px] opacity-40 leading-relaxed">
+                      After Cloudflare deploy, open your Worker URL to copy the Relay URL and auth token. See{' '}
+                      <a
+                        href="https://github.com/aitherapp/ethos-core/tree/main/relay"
+                        className="text-brand hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        relay on GitHub
+                      </a>
+                      .
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleRetryPrivateRelay()}
+                      disabled={isPrivateRelayRetrying}
+                      className="w-full px-3 py-1.5 rounded border border-border/60 hover:border-brand/40 text-text-secondary hover:text-brand text-[10px] font-bold uppercase transition-colors disabled:opacity-30"
+                    >
+                      {isPrivateRelayRetrying ? 'Retrying…' : 'Retry private relay'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -3050,8 +3643,12 @@ export default function App() {
                           iroh.updateIceServers(iceServers);
                           setIdentity(iroh.getIdentity());
                           const pushOk = await persistPushSettings(pushSettings);
-                          // Keep Settings open when push enable fails so in-panel feedback stays visible.
-                          if (pushOk || !pushSettings.enabled) {
+                          const privateRelayOk = await persistPrivateRelaySettings(privateRelaySettings);
+                          // Keep Settings open when push or private relay enable fails so feedback stays visible.
+                          if (
+                            (pushOk || !pushSettings.enabled) &&
+                            (privateRelayOk || !privateRelaySettings.enabled)
+                          ) {
                             setShowSettings(false);
                           }
                         })();
@@ -3071,20 +3668,25 @@ export default function App() {
       {/* Status Toasts */}
       <AnimatePresence>
         {status && (
-          <motion.div 
+          <motion.button 
+            type="button"
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 20, opacity: 0 }}
+            onClick={() => {
+              if (statusClearTimerRef.current) clearTimeout(statusClearTimerRef.current);
+              setStatus(null);
+            }}
             className={cn(
-              "fixed bottom-6 right-6 z-[200] px-4 py-3 rounded-xl border flex items-center gap-3 shadow-2xl backdrop-blur-md",
+              "fixed z-[200] left-3 right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-sm px-4 py-3 rounded-xl border flex items-center gap-3 shadow-2xl backdrop-blur-md text-left",
               status.type === 'error' ? "bg-red-500/10 border-red-500/20 text-red-500" : 
               status.type === 'warning' ? "bg-orange-500/10 border-orange-500/20 text-orange-500" :
               "bg-brand/10 border-brand/20 text-brand"
             )}
           >
-            {status.type === 'error' ? <Terminal className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-            <span className="text-[11px] font-bold uppercase tracking-wider">{status.message}</span>
-          </motion.div>
+            {status.type === 'error' ? <Terminal className="w-4 h-4 shrink-0" /> : <Shield className="w-4 h-4 shrink-0" />}
+            <span className="text-[11px] font-bold uppercase tracking-wider min-w-0 break-words">{status.message}</span>
+          </motion.button>
         )}
       </AnimatePresence>
 

@@ -24,5 +24,16 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["push-gateway", "node_modules", "dist", "tests/pushGatewayAllowlist.test.ts", "tests/pushGatewaySetup.test.ts"]
+  "exclude": [
+    "push-gateway",
+    "relay",
+    "node_modules",
+    "dist",
+    "tests/pushGatewayAllowlist.test.ts",
+    "tests/pushGatewaySetup.test.ts",
+    "tests/relayAuth.test.ts",
+    "tests/relayKinds.test.ts",
+    "tests/relayRateLimit.test.ts",
+    "tests/relayFilterMatch.test.ts"
+  ]
 }

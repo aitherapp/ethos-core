@@ -83,7 +83,10 @@ Relays may still observe metadata such as:
 - IP-level network metadata visible to relay infrastructure.
 
 Advanced users can add their own trusted relay to reduce dependence on public
-relays, but operating a relay does not remove all metadata exposure.
+relays, but operating a relay does not remove all metadata exposure. After a
+successful BYO private-relay handoff, ETHOS uses that relay for the relationship
+instead of public defaults, which reduces what shared public relay operators can
+observe (timing and routing on your infrastructure still apply).
 
 ## Source And Build Verification
 

@@ -1,11 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ETHOS_PUSH_WAKE,
   formatPushNotification,
+  formatWakePushNotification,
   shouldSendRemotePush,
   buildNotificationData,
+  resolveNotificationDeepLink,
+  isWakePlaceholderMessageId,
 } from '../src/lib/pushNotify';
 
 describe('pushNotify', () => {
+  it('ETHOS_PUSH_WAKE is the client wake message type', () => {
+    expect(ETHOS_PUSH_WAKE).toBe('ethos_push_wake');
+  });
+
+  it('formatWakePushNotification returns discreet wake copy', () => {
+    expect(formatWakePushNotification()).toEqual({
+      title: 'ETHOS',
+      body: 'Incoming connection…',
+    });
+  });
+
   it('formats Minimal / Sender / Preview', () => {
     expect(formatPushNotification('Minimal', 'Alice', 'hello world')).toEqual({
       title: 'ETHOS',
@@ -41,6 +56,14 @@ describe('pushNotify', () => {
         relayConnected: false,
       })
     ).toBe(false);
+    // Relay-only must still wake backgrounded mobiles.
+    expect(
+      shouldSendRemotePush({
+        triggerMode: 'Background only',
+        directConnected: false,
+        relayConnected: true,
+      })
+    ).toBe(true);
     expect(
       shouldSendRemotePush({
         triggerMode: 'Always',
@@ -56,5 +79,21 @@ describe('pushNotify', () => {
       messageId: 'm1',
       url: './#/chat/p1/m1',
     });
+  });
+
+  it('resolves deep link from payload fields or url hash', () => {
+    expect(
+      resolveNotificationDeepLink({ peerId: 'p1', messageId: 'm1' })
+    ).toEqual({ peerId: 'p1', messageId: 'm1' });
+    expect(
+      resolveNotificationDeepLink({ url: './#/chat/peerABC/msg123' })
+    ).toEqual({ peerId: 'peerABC', messageId: 'msg123' });
+    expect(resolveNotificationDeepLink({ url: './' })).toBeNull();
+  });
+
+  it('detects widget wake placeholder message ids', () => {
+    expect(isWakePlaceholderMessageId('widget-wake-123')).toBe(true);
+    expect(isWakePlaceholderMessageId('peer-wake-123')).toBe(true);
+    expect(isWakePlaceholderMessageId('msg-uuid')).toBe(false);
   });
 });

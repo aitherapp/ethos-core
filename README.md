@@ -12,6 +12,7 @@ The project is designed around one rule: user content must never fall back to pl
 - Create encrypted group chats with persisted group membership.
 - Transfer encrypted files directly between devices when WebRTC is available.
 - Continue communicating through encrypted Nostr relay fallback when a direct tunnel cannot be established.
+- Optionally deploy your own authenticated private Nostr relay so mesh signaling and fallback avoid public relay defaults after E2EE handoff (see [Opt-in BYO Private Relay](#opt-in-byo-private-relay)).
 - Use ETHOS from mobile Chrome/Safari and desktop browsers.
 - Use the app without email, phone number, signup, or password account.
 - Keep local chat history encrypted in the browser, with an optional passphrase lock.
@@ -29,7 +30,7 @@ Add the following script tag before the closing `</body>` tag of your site:
 
 ```html
 <script 
-  src="https://aitherapp.github.io/ethos/widget.js" 
+  src="https://aitherapp.github.io/ethos/widget.js?v=3.2.10" 
   data-owner-ticket="YOUR_ETHOS_NODE_TICKET_HERE"
   data-title="Support & Feedback"
   data-greeting="Hello! How can we help you today?"
@@ -37,6 +38,8 @@ Add the following script tag before the closing `</body>` tag of your site:
   async>
 </script>
 ```
+
+> **Cache bust:** bump the `?v=` query to match each ETHOS release (`package.json` / `src/version.ts`). Without it, browsers may keep an old `widget.js`.
 
 ### Configuration Options
 
@@ -46,6 +49,8 @@ Add the following script tag before the closing `</body>` tag of your site:
 | `data-title` | No | Title displayed in the widget header. | `Chat with us` |
 | `data-greeting` | No | Initial greeting message displayed to visitors. | `Hello! How can we help you today?` |
 | `data-color` | No | Hex color code for the widget launcher bubble and header. | `#000000` |
+| `data-relay-url` | No | Private Nostr relay WebSocket URL (`wss://…`) for visitor signaling. When set together with `data-relay-token`, the widget uses this relay only (no public defaults). | — |
+| `data-relay-token` | No | Auth token for the private relay (appended as `?token=` on the WebSocket URL). Use with `data-relay-url`. | — |
 
 ### Key Features
 - **Zero Server Overhead:** Uses Nostr relays for end-to-end encrypted signaling. No central backend or database needed.
@@ -79,7 +84,7 @@ Background push is **off by default**. Turn it on when you want alerts while the
 | **Gateway URL** | HTTPS base URL of your push gateway (no path suffix). |
 | **Auth token** | Bearer token your gateway expects (stored locally in the browser). |
 | **Content mode** | **Minimal** — title `ETHOS`, body `New message`. **Sender** — title includes sender name, generic body. **Preview** — sender name plus a short preview (up to ~80 characters). |
-| **Notify when** | **Background only** (default) — remote push when the recipient is not reachable on live transport. **Always** — also request push for each new message (respects gateway rate limits). |
+| **Notify when** | **Background only** (default) — remote push unless a live **direct** tunnel is up (relay-only still wakes mobiles). **Always** — also request push for each new message (respects gateway rate limits). |
 
 Your choices are shared with peers over the encrypted handshake so senders (including the embeddable widget) know which gateway URL and token to use when notifying you.
 
@@ -92,6 +97,37 @@ Add ETHOS to the **Home Screen** and open it from that icon. Web Push for instal
 - **Test local notification** — browser/OS permission only.
 - **Test gateway push** — full path through your gateway and vendor push network.
 - If gateway tests fail, check HTTPS URL, token, and that you saved after enabling push (registration must succeed).
+
+## Opt-in BYO Private Relay
+
+Public Nostr relays bootstrap signaling and encrypted fallback, but operators can still see routing and timing metadata. **Private relay is off by default.** When you deploy your own authenticated relay, ETHOS can move owner ↔ peer and owner ↔ widget traffic off public defaults after an encrypted credential handoff.
+
+Message and file payloads stay end-to-end encrypted on either path; a private relay mainly reduces dependence on shared public infrastructure.
+
+v1 note: the active Nostr pool is **process-wide** (not per-relationship). The owner stays **dual-homed** (public defaults + private) after Save so new peers can still bootstrap; peers switch to **private-only** after a successful handoff.
+
+### Enable for peer chat (owner + peer)
+
+1. **Peer:** Open ETHOS → **Settings** and turn on **Pkarr DHT** (nickname discovery). Find the relay owner via DHT search or an existing node ticket.
+2. **Owner:** Deploy a relay (pick one path):
+   - **Cloudflare (quick):** Use the one-click **Deploy to Cloudflare** button in [`relay/README.md`](relay/README.md). After deploy, **open your Worker URL**, copy the relay WebSocket URL (`wss://…`) and auth token from the setup page, then paste them into ETHOS before the token is dismissed.
+   - **Any host:** Run any `wss` service that implements the same ETHOS private-relay Nostr contract (auth token, kinds `41002` / `41003`, size and rate limits). See [`relay/README.md`](relay/README.md) for the wire protocol and security defaults.
+3. **Owner:** In **Settings**, enable **private relay**, paste **Relay URL** and **Auth token**, then **Save Changes**. ETHOS probes the private relay first; on success the owner pool becomes **public defaults + private** (dual-homed). Credentials are advertised to peers only after that successful apply.
+4. **Connect:** Peers bootstrap on **public Nostr** first (signaling only). After the secure session is up, the owner’s relay URL and token are sent over **E2EE handoff**; the **peer** then switches to the **private relay only**. (Owner remains dual-homed in v1 so further peers can still find them on public bootstrap.)
+5. If handoff fails, ETHOS stays on the bootstrap session and shows a clear status — use **Retry private relay handoff** in Settings (manual retry; no silent forever-hybrid after a successful handoff). Disabling private relay restores the public default relay list.
+
+Rotate tokens, observability notes, and non-Cloudflare hosting are documented under **Rotate secrets** and **Portable API** in [`relay/README.md`](relay/README.md).
+
+### Website widget (owner only)
+
+Visitors do not use Pkarr DHT. When both embed attributes are set, the widget uses **only** your private relay (no public Nostr defaults):
+
+| Attribute | Purpose |
+| :--- | :--- |
+| `data-relay-url` | Private relay WebSocket URL (`wss://…`) |
+| `data-relay-token` | Auth token (appended as `?token=` on the WebSocket URL) |
+
+See [Embeddable Live Chat Widget](#embeddable-live-chat-widget) for the full attribute table and embed snippet.
 
 ## How Connections Work
 
@@ -319,6 +355,104 @@ Staging builds intentionally use `npm run build` and do not create release recei
 - WebRTC data channels
 
 ## Changelog
+### v3.2.10 – Security Deps & Warrant Canary (2026-10-02)
+- Upgraded wrangler to 4.147.0 in `push-gateway/` and `relay/` so lockfiles pull undici 7.29.1 (fixes Dependabot alerts 22/23 — TLS certificate validation bypass).
+- Refreshed `public/trust/canary.txt` statement date to 2026-10-02 and expected next update to 2026-10-09 (weekly warrant canary cadence).
+- Bumped the app, service-worker, and `widget.js?v=` cache keys so browsers fetch the refreshed canary.
+
+### v3.2.9 – About Soft-Resume Notes (2026-09-21)
+- Put **v3.2.8 Mobile Soft Resume & Discreet Wake** at the top of About → What Changed Recently (fixed ordering so the latest work shows first).
+- Updated About → Reliability Notes to describe soft resume, discreet wake pushes, and sender-side message queuing in English.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
+### v3.2.8 – Mobile Soft Resume & Discreet Wake (2026-09-21)
+- Background wake pushes say “Incoming connection…” instead of claiming a delivered “New message”.
+- Foregrounding the app (or receiving a push while a client is open) soft-resumes relay sockets without tapping RECONNECT.
+- Failed wake-and-send queues the message on the sender until the peer is reachable; handshakes are throttled to avoid private-relay rate limits.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
+### v3.2.7 – Settings Docs Links (2026-09-20)
+- Settings help for push gateway and private relay links to the GitHub `push-gateway/` and `relay/` folders.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
+### v3.2.6 – Opt-in BYO Private Relay (2026-09-20)
+- Added an opt-in BYO private Nostr relay reference Worker (`relay/`) with one-click Cloudflare deploy, auth token, and kind allowlist.
+- Peers discover via Pkarr DHT, bootstrap on public Nostr, then receive relay credentials over E2EE handoff; widget supports `data-relay-url` / `data-relay-token`.
+- Bumped the app, service-worker, and `widget.js?v=` cache keys.
+
+### v3.2.5 – Wake Before Relay Ciphertext (2026-09-20)
+- Widget always wakes the owner and clears zombie relay sessions before sending ciphertext, so push notifications are paired with chat messages again.
+- Relay is only treated as usable when the peer has been recently active; the same wake-wait path applies to ethos→ethos when push is configured.
+- Bumped app, service-worker, and `widget.js?v=` cache keys.
+
+### v3.2.4 – Restore Removed Visitors (2026-09-20)
+- Re-add deleted visitors via `#aa8f` / `Visitor #aa8f` using local contact labels (not DHT name search).
+- Labels survive removal; a new message from a removed visitor restores the contact automatically.
+- Refreshed app and service-worker cache versions.
+
+### v3.2.3 – Contact List Hygiene (2026-09-20)
+- Connecting to a peer no longer picks up their website widget visitors as your contacts.
+- Deleted contacts stay deleted (removal blocklist + disconnect) instead of reappearing from mesh discovery.
+- Refreshed app and service-worker cache versions.
+
+### v3.2.2 – Unread Markers & Push Deep-Links (2026-09-20)
+- Notification clicks always deliver the deep link via postMessage (and re-read the iOS stash on focus).
+- Widget wake retries include the real message id; peer list unread dots plus a “New messages” divider in chat.
+- Local widget notifications carry deep-link data; refreshed app and service-worker cache versions.
+
+### v3.2.1 – Deploy Lint Fix (2026-09-20)
+- Fixed TypeScript error in `widgetDeliverOutbound` test that blocked the v3.2.0 Pages deploy.
+- Refreshed app and service-worker cache versions.
+
+### v3.2.0 – BYO Push & Embeddable Widget (2026-09-20)
+- Minor milestone: opt-in BYO push gateway, reliable iPhone wake-ups, and a production-ready site widget.
+- Background push via your own HTTPS gateway; notification deep-links open the right chat on iOS PWA.
+- Widget shows build version and live connection status; wakes the owner then retries delivery so notis and ciphertext stay paired.
+- Embed snippet uses `widget.js?v=` for cache busting; deploy checklist covers all version touchpoints.
+
+### v3.1.100 – Widget Wake Then Deliver (2026-09-20)
+- If the owner is asleep, the widget wakes via push, waits for a usable tunnel, then retries send so notifications are not orphaned without ciphertext.
+- Peer `sendMessage` only requests remote push after the encrypted payload is on a live direct/relay transport.
+- Failed widget deliveries are marked in the visitor UI instead of looking successful.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.99 – Widget Script Cache Bust (2026-09-20)
+- Documented `widget.js?v=` on the README embed snippet (must match each release) so hotlinked widgets are not stuck on a cached bundle.
+- Deploy checklist includes the widget embed query as a required cache-bust touchpoint.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.98 – Widget Version & Connection Status (2026-09-20)
+- Widget footer shows build version (`ETHOS widget v… · GitHub`); header polls owner transport for Connecting… / Direct / Relay / Offline.
+- `APP_VERSION` is shared via `src/version.ts` for app and widget.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.97 – Notification Deep-Link Opens Chat (2026-09-20)
+- `#/chat/…` notification links mount the chat app (previously only `#app` did, so taps could land on the landing page).
+- Service worker stashes deep-link peer/message ids for iOS PWA start_url opens.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.96 – Widget Owner Wake-Up (2026-09-20)
+- Widget → owner always requests a gateway push (does not trust zombie direct/relay flags on a backgrounded iPhone).
+- Refreshed app and service-worker cache versions.
+
+### v3.1.95 – Push Wake-Up Reliability (2026-09-20)
+- Background-only mode still requests remote push when only relay appears connected (stale relay no longer blocks iPhone wake-ups).
+- App startup reuses the existing Web Push subscription instead of rotating it every load; after enable, the endpoint is re-broadcast to peers.
+- Service worker calls `clients.claim()` on activate after cache bumps.
+- Refreshed app and service-worker cache versions.
+
+### v3.1.94 – Deep-Link Jump & iOS Input Zoom (2026-09-20)
+- Notification taps jump to the target message again (state-driven deep link, DOM retry, absolute open URL in the service worker).
+- Composer input is 16px on phones so iOS does not zoom the viewport (which was pushing Send off-screen).
+- Refreshed app and service-worker cache versions.
+
+### v3.1.93 – Mobile Composer & Toast Fixes (2026-09-20)
+- Status toasts auto-dismiss after a few seconds, dismiss on tap, and sit above the composer on phones so they do not cover Settings Save.
+- Push enable/test feedback stays in the Settings panel while Settings is open (no overlapping global toast).
+- Mobile chat bar keeps Send on-screen: ephemeral mode is icon-only on narrow viewports.
+- Notification deep-links highlight the target message once, clear the URL hash, and stop re-locking scroll to that message.
+- Refreshed app and service-worker cache versions.
+
 ### v3.1.92 – Push Settings Feedback & Gateway Fixes (2026-09-20)
 - Settings shows in-panel status for local/gateway push tests and surfaces upstream `502` / `upstream_failed` details.
 - Local notifications await the service worker and use absolute icon URLs (more reliable on Chrome/macOS).
@@ -343,7 +477,6 @@ Staging builds intentionally use `npm run build` and do not create release recei
 ### v3.1.88 – Secure VAPID Entropy & Private Peer Push (2026-09-19)
 - Replaced insecure `Math.random` VAPID fallback with `crypto.getRandomValues` (Code Scanning insecure-randomness).
 - Peer chat push notifies only when offline; body stays generic (`[chat] New message`) so E2E plaintext never reaches the OS notification.
-- Design/plan: `docs/superpowers/specs/2026-09-19-vapid-randomness-peer-push-design.md`, `docs/superpowers/plans/2026-09-19-vapid-randomness-peer-push.md`.
 - Refreshed app and service-worker cache versions.
 
 ### v3.1.87 – Web Push APNs Endpoint Exchange (2026-09-18)

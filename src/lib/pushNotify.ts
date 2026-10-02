@@ -1,5 +1,12 @@
 import type { PushContentMode, PushTriggerMode } from './pushSettings';
 
+/** SW → client message type when a push arrives (soft-resume wake). */
+export const ETHOS_PUSH_WAKE = 'ethos_push_wake';
+
+export function formatWakePushNotification(): { title: string; body: string } {
+  return { title: 'ETHOS', body: 'Incoming connection…' };
+}
+
 export function formatPushNotification(
   mode: PushContentMode,
   senderName: string,
@@ -23,7 +30,10 @@ export function shouldSendRemotePush(opts: {
   if (opts.triggerMode === 'Always') {
     return true;
   }
-  return !opts.directConnected && !opts.relayConnected;
+  // Background only: skip push only when a live direct tunnel is up.
+  // A stale "relay connected" flag must not suppress mobile wake-ups.
+  void opts.relayConnected;
+  return !opts.directConnected;
 }
 
 export function buildNotificationData(opts: {
@@ -44,4 +54,33 @@ export function parseChatDeepLink(hash: string): { peerId: string; messageId: st
   const match = CHAT_DEEP_LINK.exec(hash);
   if (!match) return null;
   return { peerId: match[1], messageId: match[2] };
+}
+
+/** Synthetic id used when waking a peer before ciphertext exists. */
+export function isWakePlaceholderMessageId(messageId: string): boolean {
+  return messageId.startsWith('widget-wake-') || messageId.startsWith('peer-wake-');
+}
+
+/** Resolve peer/message from SW notification payload or a deep-link URL/hash. */
+export function resolveNotificationDeepLink(input: {
+  peerId?: string;
+  messageId?: string;
+  url?: string;
+  hash?: string;
+}): { peerId: string; messageId: string } | null {
+  if (input.peerId && input.messageId) {
+    return { peerId: input.peerId, messageId: input.messageId };
+  }
+  const hash =
+    input.hash ||
+    (input.url
+      ? (() => {
+          try {
+            return new URL(input.url, 'https://ethos.local/').hash;
+          } catch {
+            return '';
+          }
+        })()
+      : '');
+  return parseChatDeepLink(hash);
 }
