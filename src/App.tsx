@@ -111,6 +111,16 @@ const playReceiveSound = () => playNote(600, 0.15);
 
 const ABOUT_CHANGELOG = [
   {
+    version: '3.2.10',
+    title: 'Security Deps & Warrant Canary',
+    date: '2026-10-02',
+    changes: [
+      'Upgraded wrangler in the push-gateway and relay Workers so undici is patched against a TLS certificate validation bypass (Dependabot alerts 22/23).',
+      'Refreshed the public warrant canary statement and expected-next-update dates (weekly cadence).',
+      'Bumped the app, service-worker, and widget.js?v= cache keys so browsers fetch the refreshed canary.',
+    ],
+  },
+  {
     version: '3.2.9',
     title: 'About Soft-Resume Notes',
     date: '2026-09-21',
